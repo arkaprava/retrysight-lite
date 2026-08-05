@@ -1,0 +1,40 @@
+{
+  "name": "retrysight-lite",
+  "version": "1.0.0",
+  "private": false,
+  "description": "RetrySight Lite \u2014 standalone TUI, in-process collectors, GraphQL, SQLite, MCP",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "retrysight-lite": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "NODE_OPTIONS=--experimental-sqlite tsx src/index.ts",
+    "dev:api": "NODE_OPTIONS=--experimental-sqlite RETRYSIGHT_HEADLESS=1 tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "NODE_OPTIONS=--experimental-sqlite node dist/index.js",
+    "start:api": "NODE_OPTIONS=--experimental-sqlite RETRYSIGHT_HEADLESS=1 node dist/index.js",
+    "mcp": "tsx src/mcp-stdio.ts",
+    "mcp:dist": "node dist/mcp-stdio.js",
+    "smoke": "node --experimental-sqlite smoke-test.mjs"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "^11.2.0",
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "blessed": "^0.1.81",
+    "fastify": "^5.4.0",
+    "graphql": "^16.11.0",
+    "graphql-yoga": "^5.13.5",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/blessed": "^0.1.25",
+    "@types/node": "^22.15.32",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "license": "Apache-2.0"
+}

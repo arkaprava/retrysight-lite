@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Example env-equivalent notes for the standalone app.
+# Prefer environment variables; this file documents collector defaults.
+#
+# RetrySight Lite is a single Node process: TUI + API + in-process collectors.
+
+host: "127.0.0.1"
+port: 18081
+# adminToken: set RETRYSIGHT_ADMIN_TOKEN or read data/admin-token
+# agentApiKey: set AGENT_API_KEY or read data/agent-api-key (optional HTTP ingest)
+
+collectors:
+  enabled: true
+  dataDir: "~/.retrysight-lite"
+  pollIntervalMs: 5000
+  flushIntervalMs: 10000
+  cursor:
+    enabled: true
+    # watchPaths: []   # empty → auto-detect Cursor log dirs
+  claudeCode:
+    enabled: true
+    # watchPaths: []

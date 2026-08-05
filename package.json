@@ -1,0 +1,32 @@
+{
+  "name": "retrysight-lite",
+  "version": "1.0.0",
+  "private": false,
+  "description": "RetrySight Lite \u2014 standalone terminal console for coding-agent retries, tokens, and agentic metrics",
+  "scripts": {
+    "install:app": "npm --prefix manager install",
+    "dev": "npm --prefix manager run dev",
+    "dev:api": "npm --prefix manager run dev:api",
+    "build": "npm --prefix manager run build",
+    "start": "npm --prefix manager run start",
+    "start:api": "npm --prefix manager run start:api",
+    "mcp": "npm --prefix manager run mcp",
+    "seed": "node scripts/seed-demo.mjs",
+    "dist": "node scripts/dist.mjs current",
+    "dist:mac": "node scripts/dist.mjs macos-arm64,macos-x64",
+    "dist:mac:arm64": "node scripts/dist.mjs macos-arm64",
+    "dist:win": "node scripts/dist.mjs win-x64",
+    "dist:linux": "node scripts/dist.mjs linux-x64",
+    "dist:all": "node scripts/dist.mjs all",
+    "install:macos": "bash scripts/install-macos.sh",
+    "install:linux": "bash scripts/install-linux.sh"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.3.2",
+    "esbuild": "^0.25.5"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "Apache-2.0"
+}

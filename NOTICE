@@ -1,0 +1,42 @@
+RetrySight Lite
+Copyright 2026 Arka Prava Ghosh and RetrySight Lite contributors
+
+Licensed under the Apache License, Version 2.0.
+See LICENSE for the full license text.
+
+This product includes third-party open-source software. The following
+components retain their original licenses:
+
+Node.js backend (manager/)
+--------------------------
+- @fastify/rate-limit — MIT
+- @graphql-tools/schema — MIT
+- @modelcontextprotocol/sdk — MIT
+- blessed — MIT
+- classic-level — MIT
+- fastify — MIT
+- graphql — MIT
+- graphql-yoga — MIT
+- zod — MIT
+
+Flutter desktop app (app/)
+--------------------------
+- Flutter SDK — BSD-3-Clause
+- fl_chart — MIT
+- flutter_riverpod — MIT
+- flutter_secure_storage — BSD-3-Clause
+- google_fonts — Apache-2.0
+- http — BSD-3-Clause
+- intl — BSD-3-Clause
+- path — BSD-3-Clause
+- shared_preferences — BSD-3-Clause
+
+Build tooling
+-------------
+- esbuild — MIT
+- @yao-pkg/pkg — MIT
+- TypeScript — Apache-2.0
+- tsx — MIT
+
+Tool icons bundled in app/assets/icons/ are vendor favicons used for
+identification only. Trademarks belong to their respective owners.
