@@ -406,7 +406,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           controller: _managerCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Manager path',
-                            helperText: 'Path to manager/ directory',
+                            helperText:
+                                'Dev only — release builds use bundled backend',
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -414,7 +415,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           controller: _dataDirCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Data directory',
-                            helperText: 'SQLite DB and secrets (manager/data)',
+                            helperText:
+                                'SQLite DB and secrets (default: app data dir)',
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -433,7 +435,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   ),
                                   SizedBox(height: 2),
                                   Text(
-                                    'Launch headless Node manager on app start',
+                                    'Launch bundled or dev backend on app start',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: AppTheme.muted,

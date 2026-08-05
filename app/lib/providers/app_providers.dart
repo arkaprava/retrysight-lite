@@ -56,6 +56,19 @@ class AppConfigNotifier extends StateNotifier<AsyncValue<AppConfig>> {
   }
 
   Future<void> reload() => _load();
+
+  Future<void> syncAdminTokenFromBackend() async {
+    final current = state.value;
+    if (current == null) return;
+    try {
+      final synced = await _configService.syncAdminTokenFromBackend(current);
+      if (synced.adminToken != current.adminToken) {
+        state = AsyncValue.data(synced);
+      }
+    } catch (_) {
+      // Non-fatal — user can paste token manually in Settings.
+    }
+  }
 }
 
 final backendServiceProvider = Provider<BackendService>((ref) {
@@ -74,7 +87,11 @@ final apiServiceProvider = Provider<ApiService>((ref) {
 
 final backendReadyProvider = FutureProvider<bool>((ref) async {
   final backend = ref.watch(backendServiceProvider);
-  return backend.ensureRunning();
+  final ok = await backend.ensureRunning();
+  if (ok) {
+    await ref.read(appConfigProvider.notifier).syncAdminTokenFromBackend();
+  }
+  return ok;
 });
 
 final dashboardFiltersProvider = StateProvider<DashboardFilters>(

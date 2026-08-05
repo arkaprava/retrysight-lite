@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models/app_config.dart';
+import '../utils/app_paths.dart';
 import 'api_service.dart';
 
 enum BackendState { stopped, starting, running, error }
@@ -61,10 +62,18 @@ class BackendService {
     }
 
     final config = _getConfig();
+    final bundledBinary = AppPaths.resolveBackendBinary();
     final managerDir = config.managerPath;
-    if (managerDir.isEmpty || !Directory(managerDir).existsSync()) {
+    final distIndex = p.join(managerDir, 'dist', 'index.js');
+    final useNodeDist =
+        bundledBinary == null && AppPaths.hasManagerDist(managerDir);
+
+    if (bundledBinary == null && !useNodeDist) {
+      final hasManagerDir = managerDir.isNotEmpty && Directory(managerDir).existsSync();
       _state = BackendState.error;
-      _lastError = 'Manager path not found: $managerDir';
+      _lastError = hasManagerDir
+          ? 'Backend not found. Build manager (npm run build) or use a release app bundle.'
+          : 'Backend not found: no bundled binary and manager path missing ($managerDir)';
       return false;
     }
 
@@ -72,69 +81,33 @@ class BackendService {
     _lastError = null;
     _logBuffer = '';
 
-    final distIndex = p.join(managerDir, 'dist', 'index.js');
-    final useDist = File(distIndex).existsSync();
+    final env = AppPaths.backendEnvironment(config);
+    final workingDir = AppPaths.backendWorkingDir(
+      dataDir: config.dataDir,
+      managerPath: managerDir,
+    );
 
     try {
-      if (useDist) {
+      if (bundledBinary != null) {
+        _process = await Process.start(
+          bundledBinary,
+          const ['--headless'],
+          workingDirectory: workingDir,
+          environment: env,
+        );
+      } else if (useNodeDist) {
         _process = await Process.start(
           'node',
           [distIndex],
           workingDirectory: managerDir,
-          environment: {
-            ...Platform.environment,
-            'NODE_OPTIONS': '--experimental-sqlite',
-            'RETRYSIGHT_HEADLESS': '1',
-            'RETRYSIGHT_HOST': config.host,
-            'RETRYSIGHT_PORT': config.port.toString(),
-            if (config.dataDir.isNotEmpty)
-              'RETRYSIGHT_DATA_DIR': config.dataDir,
-            if (config.cursorWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CURSOR_PATHS': config.cursorWatchPaths,
-            if (config.claudeWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CLAUDE_PATHS': config.claudeWatchPaths,
-            if (config.warpWatchPaths.isNotEmpty)
-              'RETRYSIGHT_WARP_PATHS': config.warpWatchPaths,
-            if (config.windsurfWatchPaths.isNotEmpty)
-              'RETRYSIGHT_WINDSURF_PATHS': config.windsurfWatchPaths,
-            if (config.clineWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CLINE_PATHS': config.clineWatchPaths,
-            if (config.aiderWatchPaths.isNotEmpty)
-              'RETRYSIGHT_AIDER_PATHS': config.aiderWatchPaths,
-            if (config.continueWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CONTINUE_PATHS': config.continueWatchPaths,
-            if (config.copilotWatchPaths.isNotEmpty)
-              'RETRYSIGHT_COPILOT_PATHS': config.copilotWatchPaths,
-          },
+          environment: env,
         );
       } else {
         _process = await Process.start(
           'npm',
           ['run', 'start:api'],
           workingDirectory: managerDir,
-          environment: {
-            ...Platform.environment,
-            'RETRYSIGHT_HOST': config.host,
-            'RETRYSIGHT_PORT': config.port.toString(),
-            if (config.dataDir.isNotEmpty)
-              'RETRYSIGHT_DATA_DIR': config.dataDir,
-            if (config.cursorWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CURSOR_PATHS': config.cursorWatchPaths,
-            if (config.claudeWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CLAUDE_PATHS': config.claudeWatchPaths,
-            if (config.warpWatchPaths.isNotEmpty)
-              'RETRYSIGHT_WARP_PATHS': config.warpWatchPaths,
-            if (config.windsurfWatchPaths.isNotEmpty)
-              'RETRYSIGHT_WINDSURF_PATHS': config.windsurfWatchPaths,
-            if (config.clineWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CLINE_PATHS': config.clineWatchPaths,
-            if (config.aiderWatchPaths.isNotEmpty)
-              'RETRYSIGHT_AIDER_PATHS': config.aiderWatchPaths,
-            if (config.continueWatchPaths.isNotEmpty)
-              'RETRYSIGHT_CONTINUE_PATHS': config.continueWatchPaths,
-            if (config.copilotWatchPaths.isNotEmpty)
-              'RETRYSIGHT_COPILOT_PATHS': config.copilotWatchPaths,
-          },
+          environment: env,
         );
       }
 

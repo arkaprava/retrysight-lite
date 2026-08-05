@@ -5,8 +5,8 @@ Native cross-platform GUI for RetrySight Lite — a Flutter desktop app for **ma
 ## Prerequisites
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) 3.x (stable channel)
-- Node.js **22.5+** (for the headless manager backend: collectors, SQLite, REST API)
-- Built manager: `cd ../manager && npm install && npm run build`
+- Node.js **22.5+** — **dev builds only** (runs `manager/` from source). Release builds from `npm run dist:app` embed the backend; end users do not need Node.
+- Built manager (dev): `cd ../manager && npm install && npm run build`
 
 Platform build tools:
 
@@ -28,11 +28,34 @@ On first launch the app will:
 
 1. Auto-detect `../manager` as the backend path (override with `RETRYSIGHT_MANAGER` or Settings)
 2. Read the admin token from OS secure storage (Keychain / DPAPI / libsecret); if none is saved, read it from `manager/data/admin-token` and save it to secure storage
-3. Auto-start the headless Node manager (`RETRYSIGHT_HEADLESS=1`) if not already running
+3. Auto-start the headless backend if not already running — bundled binary in release builds, otherwise `node manager/dist/index.js`
 
 You can change host, port, paths, and auto-start in **Settings**.
 
 ## Build (release)
+
+### Self-contained desktop app (no Node required for users)
+
+From the repo root (requires Node + Flutter on the **build machine** only):
+
+```bash
+npm install && npm run install:app
+npm run dist:app          # current platform → release/app-<target>/
+npm run dist:app:mac      # macOS Apple Silicon
+npm run dist:app:linux    # Linux x64 (uses Docker when building from macOS)
+npm run dist:app:win      # Windows x64 (Windows host or GitHub Actions)
+npm run dist:app:all      # every target buildable on this host
+```
+
+On **macOS**, `dist:app:linux` cross-builds via Docker (`linux/amd64`). Windows builds require a Windows machine or CI:
+
+```bash
+gh workflow run release-desktop.yml -f target=win-x64
+```
+
+This builds the pkg backend, embeds it inside the Flutter app bundle, and archives to `release/retrysight-lite-app-<target>.tar.gz` (or `.zip` on Windows).
+
+### Flutter only (dev — still needs Node at runtime)
 
 ```bash
 flutter build macos     # → build/macos/Build/Products/Release/RetrySight Lite.app
@@ -72,8 +95,8 @@ Defaults:
 |---------|---------|---------|
 | Host | `127.0.0.1` | prefs |
 | Port | `18081` | prefs |
-| Manager path | `../manager` (relative to repo) | prefs |
-| Data dir | `{manager}/data` | prefs |
+| Manager path | `../manager` (dev) or empty (release bundle) | prefs |
+| Data dir | `~/Library/Application Support/RetrySightLite/data` (release) or `{manager}/data` (dev) | prefs |
 | Auto-start backend | on | prefs |
 | Admin token | from secure storage, else `manager/data/admin-token` | secure storage |
 | Collector watch paths | Per-tool defaults when empty | prefs |
@@ -86,7 +109,7 @@ Installed backend data dirs (when not using dev `manager/data`):
 
 ## Troubleshooting
 
-- **Backend offline:** Ensure Node 22.5+ is on `PATH` and `manager/dist/index.js` exists (`npm run build` in `manager/`).
+- **Backend offline (dev):** Ensure Node 22.5+ is on `PATH` and `manager/dist/index.js` exists, or build with `npm run dist:app` for a bundled backend.
 - **401 Unauthorized:** Set admin token in Settings (copy from `manager/data/admin-token`).
 - **No tasks:** Use Cursor/Claude Code locally or run `npm run seed` from the repo root.
 - **Tests:** `flutter analyze && flutter test`

@@ -116,7 +116,7 @@ class TasksScreen extends ConsumerWidget {
                       ),
                     ),
                     title: Text(
-                      t.title ?? t.id,
+                      t.displayLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -197,7 +197,7 @@ class _TaskDetailView extends ConsumerWidget {
                   ),
                   Expanded(
                     child: Text(
-                      task.title ?? task.id,
+                      task.displayLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 13, color: AppTheme.fg),

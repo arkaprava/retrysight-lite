@@ -1,0 +1,113 @@
+name: Release Desktop Apps
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Build target'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - linux-x64
+          - win-x64
+          - macos-arm64
+
+jobs:
+  build-linux:
+    if: >-
+      ${{ github.event.inputs.target == 'all' ||
+          github.event.inputs.target == 'linux-x64' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            manager/package-lock.json
+      - run: npm ci && npm run install:app
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev
+      - name: Build self-contained Linux app
+        run: npm run dist:app:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrysight-lite-app-linux-x64
+          path: |
+            release/app-linux-x64/**
+            release/retrysight-lite-*-linux-x64.tar.gz
+            release/retrysight-lite-app-linux-x64.tar.gz
+            release/manifest.json
+            release/cdn-staging/**
+
+  build-windows:
+    if: >-
+      ${{ github.event.inputs.target == 'all' ||
+          github.event.inputs.target == 'win-x64' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            manager/package-lock.json
+      - run: npm ci && npm run install:app
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build self-contained Windows app
+        run: npm run dist:app:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrysight-lite-app-win-x64
+          path: |
+            release/app-win-x64/**
+            release/retrysight-lite-*-win-x64.zip
+            release/retrysight-lite-app-win-x64.zip
+            release/manifest.json
+            release/cdn-staging/**
+
+  build-macos:
+    if: >-
+      ${{ github.event.inputs.target == 'all' ||
+          github.event.inputs.target == 'macos-arm64' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            manager/package-lock.json
+      - run: npm ci && npm run install:app
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build self-contained macOS app
+        run: npm run dist:app:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrysight-lite-app-macos-arm64
+          path: |
+            release/app-macos-arm64/**
+            release/retrysight-lite-*-macos-arm64.dmg
+            release/retrysight-lite-app-macos-arm64.tar.gz
+            release/manifest.json
+            release/cdn-staging/**

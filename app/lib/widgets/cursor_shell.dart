@@ -50,23 +50,13 @@ class CursorActivityBar extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
                 child: Row(
                   children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.accent.withValues(alpha: 0.3),
-                            AppTheme.accentSecondary.withValues(alpha: 0.2),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                        border: Border.all(color: AppTheme.navActiveBorder),
-                      ),
-                      child: Icon(
-                        Icons.monitor_heart_outlined,
-                        size: 20,
-                        color: AppTheme.accent,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      child: Image.asset(
+                        kAppLogoAsset,
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover,
                       ),
                     ),
                     const SizedBox(width: 10),

@@ -46,4 +46,6 @@ class ConfigService {
       await _secureStorage.delete(key: _tokenKey);
     } catch (_) {}
   }
+
+  Future<AppConfig> syncAdminTokenFromBackend(AppConfig config) async => config;
 }

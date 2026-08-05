@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_config.dart';
+import '../utils/app_paths.dart';
 
 class ConfigService {
   static const _prefsKey = 'retrysight_lite_app_config';
@@ -82,65 +83,97 @@ class ConfigService {
   }
 
   Future<AppConfig> _applyDefaults(AppConfig config) async {
+    final bundledBinary = AppPaths.resolveBackendBinary();
     final managerPath = config.managerPath.isNotEmpty
         ? config.managerPath
-        : _defaultManagerPath();
+        : (bundledBinary != null ? '' : _defaultManagerPath());
+
+    final dataDir = config.dataDir.isNotEmpty
+        ? config.dataDir
+        : _defaultDataDir(bundledBinary, managerPath);
 
     var adminToken = config.adminToken;
-    if (adminToken.isEmpty) {
-      final dataDirs = <String>{
-        if (config.dataDir.isNotEmpty) config.dataDir,
-        p.join(managerPath, 'data'),
-        _installedDataDir(),
-      };
-      for (final dataDir in dataDirs) {
-        adminToken = await _readTokenFile(p.join(dataDir, 'admin-token'));
-        if (adminToken.isNotEmpty) break;
+    final fileToken = await _readAdminTokenFromFiles(
+      dataDir: dataDir,
+      managerPath: managerPath,
+    );
+    if (fileToken.isNotEmpty) {
+      final preferFile =
+          adminToken.isEmpty ||
+          bundledBinary != null ||
+          adminToken != fileToken;
+      if (preferFile) {
+        adminToken = fileToken;
       }
     }
 
-    return config.copyWith(
+    final resolved = config.copyWith(
       managerPath: managerPath,
       adminToken: adminToken,
-      dataDir: config.dataDir.isNotEmpty
-          ? config.dataDir
-          : p.join(managerPath, 'data'),
+      dataDir: dataDir,
     );
+
+    if (adminToken.isNotEmpty && adminToken != config.adminToken) {
+      await _persistAdminToken(adminToken);
+    }
+
+    return resolved;
   }
 
-  String _installedDataDir() {
-    final home =
-        Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'] ??
-        Platform.environment['APPDATA'];
-    if (home == null || home.isEmpty) return '';
+  /// Re-read admin-token from backend data dirs after the server starts.
+  Future<AppConfig> syncAdminTokenFromBackend(AppConfig config) async {
+    final fileToken = await _readAdminTokenFromFiles(
+      dataDir: config.dataDir,
+      managerPath: config.managerPath,
+    );
+    if (fileToken.isEmpty || fileToken == config.adminToken) {
+      return config;
+    }
 
-    if (Platform.isMacOS) {
-      return p.join(
-        home,
-        'Library',
-        'Application Support',
-        'RetrySightLite',
-        'data',
-      );
+    final updated = config.copyWith(adminToken: fileToken);
+    await _persistAdminToken(fileToken);
+    await save(updated);
+    return updated;
+  }
+
+  Future<void> _persistAdminToken(String token) async {
+    try {
+      await _secureStorage.write(key: _tokenKey, value: token);
+    } catch (_) {
+      // Best effort — token remains in memory for this session.
     }
-    if (Platform.isLinux) {
-      final xdgData = Platform.environment['XDG_DATA_HOME'];
-      if (xdgData != null && xdgData.isNotEmpty) {
-        return p.join(xdgData, 'RetrySightLite', 'data');
-      }
-      return p.join(home, '.local', 'share', 'RetrySightLite', 'data');
-    }
-    if (Platform.isWindows) {
-      return p.join(home, 'RetrySightLite', 'data');
+  }
+
+  Future<String> _readAdminTokenFromFiles({
+    required String dataDir,
+    required String managerPath,
+  }) async {
+    for (final path in AppPaths.adminTokenFileCandidates(
+      dataDir: dataDir,
+      managerPath: managerPath,
+      extraDataDirs: [p.join(_defaultManagerPath(), 'data')],
+    )) {
+      final token = await _readTokenFile(path);
+      if (token.isNotEmpty) return token;
     }
     return '';
+  }
+
+  String _defaultDataDir(String? bundledBinary, String managerPath) {
+    if (bundledBinary != null) {
+      final installed = AppPaths.installedDataDir();
+      if (installed.isNotEmpty) return installed;
+    }
+    if (managerPath.isNotEmpty) {
+      return p.join(managerPath, 'data');
+    }
+    return AppPaths.installedDataDir();
   }
 
   String _defaultManagerPath() {
     for (final key in ['RETRYSIGHT_MANAGER', 'RETRYSITELITE_MANAGER']) {
       final env = Platform.environment[key];
-      if (env != null && env.isNotEmpty && _hasManagerDist(env)) {
+      if (env != null && env.isNotEmpty && AppPaths.hasManagerDist(env)) {
         return p.normalize(env);
       }
     }
@@ -153,14 +186,10 @@ class ConfigService {
       p.normalize(p.join(cwd, '..', 'manager')),
       p.join(cwd, 'manager'),
     ]) {
-      if (_hasManagerDist(candidate)) return candidate;
+      if (AppPaths.hasManagerDist(candidate)) return candidate;
     }
 
     return p.normalize(p.join(cwd, '..', 'manager'));
-  }
-
-  bool _hasManagerDist(String path) {
-    return File(p.join(path, 'dist', 'index.js')).existsSync();
   }
 
   String? _managerPathFromExecutable() {
@@ -170,7 +199,7 @@ class ConfigService {
         p.normalize(p.join(dir.path, '..', 'manager')),
         p.join(dir.path, 'manager'),
       ]) {
-        if (_hasManagerDist(candidate)) return candidate;
+        if (AppPaths.hasManagerDist(candidate)) return candidate;
       }
       final parent = dir.parent;
       if (parent.path == dir.path) break;

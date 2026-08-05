@@ -27,6 +27,22 @@ class TaskSummary {
   final String? gitBranch;
   final String? projectRoot;
 
+  /// User-facing label — prefers title, else id without the tool prefix.
+  String get displayLabel {
+    final t = title?.trim();
+    if (t != null && t.isNotEmpty) return t;
+    return formatTaskId(id);
+  }
+
+  static String formatTaskId(String id) {
+    final colon = id.indexOf(':');
+    if (colon >= 0 && colon < id.length - 1) {
+      final suffix = id.substring(colon + 1).trim();
+      if (suffix.isNotEmpty) return suffix;
+    }
+    return id;
+  }
+
   factory TaskSummary.fromJson(Map<String, dynamic> json) {
     return TaskSummary(
       id: json['id'] as String,

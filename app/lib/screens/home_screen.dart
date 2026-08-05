@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_info.dart';
+import '../models/task.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
@@ -85,8 +86,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       data: (cfg) {
         final nav = _navItems[_index];
-        final breadcrumb = _index == 1 && _selectedTaskId != null
-            ? _selectedTaskId
+        final taskBreadcrumb = _index == 1 && _selectedTaskId != null
+            ? ref.watch(taskDetailProvider(_selectedTaskId!)).maybeWhen(
+                data: (task) => task.displayLabel,
+                orElse: () => TaskSummary.formatTaskId(_selectedTaskId!),
+              )
             : null;
 
         Widget body;
@@ -128,7 +132,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     children: [
                       CursorTitleBar(
                         title: nav.label,
-                        breadcrumb: breadcrumb,
+                        breadcrumb: taskBreadcrumb,
                         trailing: StatusChip(
                           label: 'backend',
                           color: backendHealthy

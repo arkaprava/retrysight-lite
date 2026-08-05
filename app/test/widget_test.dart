@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retrysight_lite/models/app_config.dart';
 import 'package:retrysight_lite/models/dashboard.dart';
+import 'package:retrysight_lite/models/task.dart';
 import 'package:retrysight_lite/utils/path_utils.dart';
 
 void main() {
@@ -58,6 +59,27 @@ void main() {
       () => resolveSafeDataDir('/tmp/data/../secret'),
       throwsArgumentError,
     );
+  });
+
+  test('TaskSummary displayLabel prefers title over id', () {
+    const task = TaskSummary(
+      id: 'CURSOR:abc-123',
+      sourceTool: 'CURSOR',
+      status: 'COMPLETED',
+      retryCount: 0,
+      title: 'Fix login retry loop',
+    );
+    expect(task.displayLabel, 'Fix login retry loop');
+  });
+
+  test('TaskSummary displayLabel strips tool prefix when title missing', () {
+    const task = TaskSummary(
+      id: 'CURSOR:abc-123',
+      sourceTool: 'CURSOR',
+      status: 'ACTIVE',
+      retryCount: 1,
+    );
+    expect(task.displayLabel, 'abc-123');
   });
 
   test('isPathInsideRoot accepts nested files', () {

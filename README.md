@@ -64,6 +64,40 @@ npm run dev              # TUI + API + collectors
 
 Build artifacts land in `release/`.
 
+**Self-contained desktop app (Flutter + embedded backend, no Node for users):**
+
+```bash
+npm install && npm run install:app
+npm run dist:app:all          # macOS + Linux on this Mac (Docker)
+npm run manifest && npm run stage:cdn   # refresh manifest + cdn-staging/
+```
+
+One-line install for users (after uploading `release/cdn-staging/` — see [docs/DOWNLOADS.md](docs/DOWNLOADS.md)):
+
+```bash
+curl -fsSL https://app.retrysight.com/install.sh | bash
+```
+
+Output: `release/app-<target>/` and `release/retrysight-lite-app-<target>.tar.gz` (or `.zip` on Windows).
+
+| Build host | macOS app | Linux app | Windows app |
+| ---------- | --------- | --------- | ----------- |
+| macOS      | native    | Docker    | GitHub Actions |
+| Linux      | —         | native    | GitHub Actions |
+| Windows    | —         | —         | native |
+
+**GitHub Actions** (all platforms, after pushing `.github/workflows/release-desktop.yml`):
+
+```bash
+gh workflow run release-desktop.yml -f target=all
+gh workflow run release-desktop.yml -f target=linux-x64
+gh workflow run release-desktop.yml -f target=win-x64
+```
+
+Download artifacts from the Actions run page.
+
+**Backend-only headless service:**
+
 ```bash
 npm install
 npm run install:app
@@ -71,12 +105,12 @@ npm run dist:mac:arm64   # or: dist:mac / dist:linux / dist:win / dist:all
 ```
 
 
-| Platform            | Artifact                           | Install                                  |
-| ------------------- | ---------------------------------- | ---------------------------------------- |
-| macOS Apple Silicon | `release/macos-arm64/` + `.tar.gz` | `./install-macos.sh` (LaunchAgent)       |
-| macOS Intel         | `release/macos-x64/` + `.tar.gz`   | `./install-macos.sh`                     |
-| Linux x64           | `release/linux-x64/` + `.tar.gz`   | `./install-linux.sh` (systemd user unit) |
-| Windows x64         | `release/win-x64/` + `.zip`        | `.\install-windows.ps1` (Scheduled Task) |
+| Platform            | Self-contained app                         | Backend-only                           | Install                                  |
+| ------------------- | ------------------------------------------ | -------------------------------------- | ---------------------------------------- |
+| macOS Apple Silicon | `release/app-macos-arm64/` + `.tar.gz`     | `release/macos-arm64/` + `.tar.gz`     | `./install-macos.sh` (LaunchAgent)       |
+| macOS Intel         | `release/app-macos-x64/` + `.tar.gz`       | `release/macos-x64/` + `.tar.gz`       | `./install-macos.sh`                     |
+| Linux x64           | `release/app-linux-x64/` + `.tar.gz`       | `release/linux-x64/` + `.tar.gz`       | `./install-linux.sh` (systemd user unit) |
+| Windows x64         | `release/app-win-x64/` + `.zip`            | `release/win-x64/` + `.zip`            | `.\install-windows.ps1` (Scheduled Task) |
 
 
 Defaults after install:
@@ -200,6 +234,8 @@ See `[CONTRIBUTING.md](CONTRIBUTING.md)` for contribution guidelines.
 
 ## Packaging scripts
 
+Backend-only (headless service):
+
 ```bash
 npm run dist           # current platform binary + archive → release/
 npm run dist:mac       # macos-arm64 + macos-x64
@@ -208,7 +244,14 @@ npm run dist:win       # win-x64
 npm run dist:all       # all of the above
 ```
 
-Uses `esbuild` + `[@yao-pkg/pkg](https://github.com/yao-pkg/pkg)` (Node 22). A `release/portable-*` folder is also produced for running with a system Node 22.5+ install.
+Self-contained Flutter desktop apps (see [Install](#install-platform-binaries)):
+
+```bash
+npm run dist:app       # current platform
+npm run dist:app:all   # all targets buildable on this host
+```
+
+Uses `esbuild` + `[@yao-pkg/pkg](https://github.com/yao-pkg/pkg)` (Node 22). `npm run dist:app` embeds the pkg binary inside the Flutter desktop bundle so end users do not need Node. Cross-platform builds use Docker (Linux from macOS) or [GitHub Actions](.github/workflows/release-desktop.yml) (Windows). A `release/portable-*` folder is also produced for running with a system Node 22.5+ install.
 
 ## Project layout
 
