@@ -34,6 +34,7 @@ import {
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { arch, platform } from 'node:os'
+import { run } from './run.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const appDir = join(root, 'app')
@@ -76,15 +77,11 @@ function resolveTargets() {
 
 function commandExists(cmd) {
   const which = platform() === 'win32' ? 'where' : 'which'
-  const r = spawnSync(which, [cmd], { stdio: 'ignore' })
+  const r = spawnSync(which, [cmd], {
+    stdio: 'ignore',
+    shell: platform() === 'win32',
+  })
   return r.status === 0
-}
-
-function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', cwd: root, ...opts })
-  if (r.status !== 0) {
-    throw new Error(`${cmd} ${args.join(' ')} failed (${r.status})`)
-  }
 }
 
 function flutterHostFor(target) {
@@ -277,8 +274,8 @@ function archiveRelease(target, outDir) {
 
 function finalizeRelease() {
   console.log('\n→ Generate manifest.json')
-  run('node', [join(root, 'scripts/generate-manifest.mjs'), appVersion])
-  run('node', [join(root, 'scripts/write-cdn-staging.mjs'), appVersion])
+  run('node', [join(root, 'scripts/generate-manifest.mjs'), appVersion], { cwd: root })
+  run('node', [join(root, 'scripts/write-cdn-staging.mjs'), appVersion], { cwd: root })
 }
 
 function buildTarget(target) {
@@ -291,7 +288,7 @@ function buildTarget(target) {
 
   console.log(`\n=== ${target} ===`)
   console.log('→ Build backend binary (pkg)')
-  run('node', [join(root, 'scripts/dist.mjs'), target])
+  run('node', [join(root, 'scripts/dist.mjs'), target], { cwd: root })
 
   if (!existsSync(pkgBinary)) {
     throw new Error(`Backend binary missing: ${pkgBinary}`)

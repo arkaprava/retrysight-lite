@@ -7,7 +7,7 @@
  * Targets (via RETRYSIGHT_DIST_TARGETS or CLI args):
  *   macos-arm64, macos-x64, linux-x64, win-x64, all, current
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import {
   copyFileSync,
   cpSync,
@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { arch, platform } from 'node:os'
+import { run } from './run.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const releaseDir = join(root, 'release')
@@ -51,16 +52,11 @@ function resolveTargets() {
   return raw.split(',').map((s) => s.trim()).filter(Boolean)
 }
 
-function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', cwd: root, ...opts })
-  if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} failed (${r.status})`)
-}
-
 console.log('→ Typecheck / build manager')
-run('npm', ['run', 'build', '--prefix', 'manager'])
+run('npm', ['run', 'build', '--prefix', 'manager'], { cwd: root })
 
 console.log('→ Bundle for packaging')
-run(process.execPath, [join(root, 'scripts/build-bundle.mjs')])
+run(process.execPath, [join(root, 'scripts/build-bundle.mjs')], { cwd: root })
 
 const targets = resolveTargets()
 for (const key of targets) {
@@ -96,7 +92,7 @@ for (const key of targets) {
     'GZip',
     '--options',
     'experimental-sqlite',
-  ])
+  ], { cwd: root })
 
   if (!key.startsWith('win')) {
     try {
@@ -172,7 +168,11 @@ if [[ ! -d node_modules ]]; then npm install --omit=dev; fi
 exec node dist/index.js "$@"
 `,
 )
-chmodSync(join(portable, 'run.sh'), 0o755)
+try {
+  chmodSync(join(portable, 'run.sh'), 0o755)
+} catch {
+  /* Windows */
+}
 
 console.log('\nArtifacts in release/:')
 for (const key of targets) {
