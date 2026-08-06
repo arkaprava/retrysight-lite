@@ -23,9 +23,19 @@ import { arch, platform } from 'node:os'
 import { run } from './run.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const managerDir = join(root, 'manager')
 const releaseDir = join(root, 'release')
 const outDir = join(root, 'dist-pkg')
 const require = createRequire(import.meta.url)
+const managerRequire = createRequire(join(managerDir, 'package.json'))
+
+function managerTscBin() {
+  try {
+    return managerRequire.resolve('typescript/bin/tsc')
+  } catch {
+    throw new Error('manager dependencies missing — run npm run install:app')
+  }
+}
 
 const ALL_TARGETS = {
   'macos-arm64': { pkg: 'node22-macos-arm64', bin: 'retrysight-lite', archive: 'tar' },
@@ -53,7 +63,7 @@ function resolveTargets() {
 }
 
 console.log('→ Typecheck / build manager')
-run('npm', ['run', 'build', '--prefix', 'manager'], { cwd: root })
+run(process.execPath, [managerTscBin()], { cwd: managerDir })
 
 console.log('→ Bundle for packaging')
 run(process.execPath, [join(root, 'scripts/build-bundle.mjs')], { cwd: root })

@@ -274,8 +274,8 @@ function archiveRelease(target, outDir) {
 
 function finalizeRelease() {
   console.log('\n→ Generate manifest.json')
-  run('node', [join(root, 'scripts/generate-manifest.mjs'), appVersion], { cwd: root })
-  run('node', [join(root, 'scripts/write-cdn-staging.mjs'), appVersion], { cwd: root })
+  run(process.execPath, [join(root, 'scripts/generate-manifest.mjs'), appVersion], { cwd: root })
+  run(process.execPath, [join(root, 'scripts/write-cdn-staging.mjs'), appVersion], { cwd: root })
 }
 
 function buildTarget(target) {
@@ -288,7 +288,7 @@ function buildTarget(target) {
 
   console.log(`\n=== ${target} ===`)
   console.log('→ Build backend binary (pkg)')
-  run('node', [join(root, 'scripts/dist.mjs'), target], { cwd: root })
+  run(process.execPath, [join(root, 'scripts/dist.mjs'), target], { cwd: root })
 
   if (!existsSync(pkgBinary)) {
     throw new Error(`Backend binary missing: ${pkgBinary}`)

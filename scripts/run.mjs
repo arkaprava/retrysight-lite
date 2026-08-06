@@ -4,14 +4,25 @@
 import { spawnSync } from 'node:child_process'
 import { platform } from 'node:os'
 
+const isWin = platform() === 'win32'
+
+/** Map bare command names to Windows executables when needed. */
+function resolveCmd(cmd) {
+  if (!isWin) return cmd
+  if (cmd === 'npm') return 'npm.cmd'
+  if (cmd === 'npx') return 'npx.cmd'
+  return cmd
+}
+
 /**
  * Cross-platform command runner.
- * Uses shell on Windows so npm.cmd / flutter.bat resolve correctly.
+ * Resolves npm.cmd on Windows and falls back to shell when needed.
  */
 export function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, {
+  const resolved = resolveCmd(cmd)
+  const r = spawnSync(resolved, args, {
     stdio: 'inherit',
-    shell: platform() === 'win32',
+    shell: isWin && resolved === cmd,
     ...opts,
   })
   if (r.error) {
