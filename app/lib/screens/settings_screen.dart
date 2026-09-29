@@ -6,7 +6,6 @@ import 'package:path/path.dart' as p;
 import '../models/app_config.dart';
 import '../models/collector_config.dart';
 import '../providers/app_providers.dart';
-import '../providers/notification_settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/platform_file_ops.dart';
 import '../theme/app_theme.dart';

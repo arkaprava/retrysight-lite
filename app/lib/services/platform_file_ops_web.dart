@@ -1,4 +1,6 @@
-import 'dart:html' as html;
+import 'dart:js_interop';
+
+import 'package:web/web.dart' as web;
 
 Future<void> deleteSqliteDatabaseFiles(String dataDirPath) async {
   throw UnsupportedError('Database reset is not supported in the web UI');
@@ -9,11 +11,15 @@ Future<void> deleteSqliteDatabaseFiles(String dataDirPath) async {
 /// dependency needed). Returns the suggested file name; the browser controls
 /// where it actually lands.
 Future<String> saveCsvExport(String csv, String suggestedFileName) async {
-  final blob = html.Blob([csv], 'text/csv');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  html.AnchorElement(href: url)
-    ..setAttribute('download', suggestedFileName)
+  final blob = web.Blob(
+    [csv.toJS].toJS,
+    web.BlobPropertyBag(type: 'text/csv'),
+  );
+  final url = web.URL.createObjectURL(blob);
+  web.HTMLAnchorElement()
+    ..href = url
+    ..download = suggestedFileName
     ..click();
-  html.Url.revokeObjectUrl(url);
+  web.URL.revokeObjectURL(url);
   return suggestedFileName;
 }
