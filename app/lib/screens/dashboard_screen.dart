@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../models/dashboard.dart';
+import '../models/task.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import '../widgets/charts/chart_utils.dart';
@@ -201,6 +203,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   Expanded(
                     child: CursorPanel(
                       title: 'Overview',
+                      subtitle: 'Tasks, retries, and completion for the selected range',
                       child: Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -235,6 +238,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   '${(v * 100).toStringAsFixed(1)}%',
                               deltaLabel: deltaLabel,
                               isRefreshing: isRefreshing,
+                              accentValue: true,
                             ),
                           ),
                           SizedBox(
@@ -317,6 +321,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               const SizedBox(height: 12),
               CursorPanel(
                 title: 'Cost',
+                subtitle: 'Estimated spend from token usage, by model rates',
                 child: Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -330,8 +335,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         formatFn: fmtUsd,
                         deltaLabel: deltaLabel,
                         isRefreshing: isRefreshing,
+                        accentValue: true,
                       ),
                     ),
+                    if (dash.budgetUsd != null &&
+                        dash.budgetUsedFraction != null) ...[
+                      SizedBox(
+                        width: 180,
+                        child: LiveKpiCard(
+                          label: 'Budget used',
+                          value: dash.budgetUsedFraction!,
+                          formatFn: (v) => '${(v * 100).toStringAsFixed(0)}%',
+                          footnote: 'of ${fmtUsd(dash.budgetUsd!)} budget',
+                          showLiveBadge: false,
+                          valueColor: _budgetColor(dash.budgetUsedFraction!),
+                          topBorderColor: _budgetColor(
+                            dash.budgetUsedFraction!,
+                          ),
+                        ),
+                      ),
+                    ],
                     SizedBox(
                       width: 180,
                       child: LiveKpiCard(
@@ -369,6 +392,39 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ],
                 ),
               ),
+              if (dash.topRetryTasks.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                CursorPanel(
+                  title: 'Needs attention',
+                  subtitle: 'Highest retry counts right now',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final t in dash.topRetryTasks.take(5))
+                        _TopRetryTaskRow(
+                          task: t,
+                          onTap: widget.onOpenTask == null
+                              ? null
+                              : () => widget.onOpenTask!(t.id),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+              if (dash.periodComparisons.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                CursorPanel(
+                  title: 'Trends',
+                  subtitle: 'Fixed comparisons, independent of the selected range',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final c in dash.periodComparisons)
+                        _PeriodComparisonRow(comparison: c),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               CursorPanel(
                 title: 'Live Charts',
@@ -452,27 +508,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         Expanded(
                           child: ChartCard(
                             title: 'Token usage by model',
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: TokenUsageChart(models: dash.byModel),
-                                ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    _LegendDot(
-                                      color: kTokenInputColor,
-                                      label: 'Input',
-                                    ),
-                                    const SizedBox(width: 16),
-                                    _LegendDot(
-                                      color: kTokenOutputColor,
-                                      label: 'Output',
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                            legend: [
+                              _LegendDot(
+                                color: kTokenInputColor,
+                                label: 'Input',
+                              ),
+                              _LegendDot(
+                                color: kTokenOutputColor,
+                                label: 'Output',
+                              ),
+                            ],
+                            child: TokenUsageChart(models: dash.byModel),
                           ),
                         ),
                       ],
@@ -494,29 +540,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         Expanded(
                           child: ChartCard(
                             title: 'Daily completion rate',
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: DailyCompletionTrendChart(
-                                    dailyData: dash.dailyCompletionRate,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    _LegendDot(
-                                      color: kCompletedColor,
-                                      label: 'Completed',
-                                    ),
-                                    const SizedBox(width: 16),
-                                    _LegendDot(
-                                      color: kAbandonedColor,
-                                      label: 'Abandoned',
-                                    ),
-                                  ],
-                                ),
-                              ],
+                            legend: [
+                              _LegendDot(
+                                color: kCompletedColor,
+                                label: 'Completed',
+                              ),
+                              _LegendDot(
+                                color: kAbandonedColor,
+                                label: 'Abandoned',
+                              ),
+                            ],
+                            child: DailyCompletionTrendChart(
+                              dailyData: dash.dailyCompletionRate,
                             ),
                           ),
                         ),
@@ -691,6 +726,83 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: ChartCard(
+                            title: 'Agent comparison',
+                            child: AgentComparisonChart(agents: dash.byAgent),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ChartCard(
+                            title: 'Repo activity',
+                            child: RepoActivityChart(repos: dash.byRepo),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (dash.agentHealth.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      CursorPanel(
+                        title: 'Agent health',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final health in dash.agentHealth)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        health.agentName,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.fg,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        'Last seen: ${fmtTs(health.lastHeartbeatAt)}',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.muted,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${health.activeTasks} active',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.muted,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    StatusChip(
+                                      label: health.stale ? 'Stale' : 'Active',
+                                      color: health.stale
+                                          ? AppTheme.danger
+                                          : AppTheme.success,
+                                      pulse: !health.stale,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -786,6 +898,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
+/// Green under 70% of budget, amber up to 100%, red once over.
+Color _budgetColor(double usedFraction) {
+  if (usedFraction >= 1.0) return AppTheme.danger;
+  if (usedFraction >= 0.7) return AppTheme.warn;
+  return AppTheme.success;
+}
+
 class _LegendDot extends StatelessWidget {
   const _LegendDot({required this.color, required this.label});
 
@@ -804,6 +923,195 @@ class _LegendDot extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Text(label, style: TextStyle(color: AppTheme.muted, fontSize: 11)),
+      ],
+    );
+  }
+}
+
+class _TopRetryTaskRow extends StatelessWidget {
+  const _TopRetryTaskRow({required this.task, this.onTap});
+
+  final TopRetryTask task;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brandColor = ToolBrand.colorFor(task.sourceTool);
+    final severe = task.retryCount >= 8;
+    final chipColor = severe ? AppTheme.danger : AppTheme.warn;
+    final title = task.title?.trim();
+    final label = (title != null && title.isNotEmpty)
+        ? title
+        : TaskSummary.formatTaskId(task.id);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: brandColor.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ToolIcon(task.sourceTool, size: 15),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.instrumentSans(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.fg,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      ToolBrand.forTool(task.sourceTool).name,
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 11,
+                        color: AppTheme.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: chipColor.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${task.retryCount} ${task.retryCount == 1 ? 'retry' : 'retries'}',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: chipColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PeriodComparisonRow extends StatelessWidget {
+  const _PeriodComparisonRow({required this.comparison});
+
+  final PeriodComparison comparison;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              comparison.label,
+              style: GoogleFonts.instrumentSans(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.fg,
+              ),
+            ),
+          ),
+          Expanded(
+            child: _PeriodMetric(
+              label: 'Retries',
+              current: comparison.current.totalRetries.toDouble(),
+              previous: comparison.previous.totalRetries.toDouble(),
+              format: (v) => v.toStringAsFixed(0),
+            ),
+          ),
+          Expanded(
+            child: _PeriodMetric(
+              label: 'Spend',
+              current: comparison.current.estimatedCostUsd,
+              previous: comparison.previous.estimatedCostUsd,
+              format: fmtUsd,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodMetric extends StatelessWidget {
+  const _PeriodMetric({
+    required this.label,
+    required this.current,
+    required this.previous,
+    required this.format,
+  });
+
+  final String label;
+  final double current;
+  final double previous;
+  final String Function(double) format;
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = fmtDelta(current, previous);
+    final deltaUp = delta != null && !delta.startsWith('-');
+    final deltaColor = delta == null
+        ? AppTheme.muted
+        : (deltaUp ? AppTheme.danger : AppTheme.success);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: AppTheme.muted, fontSize: 10.5),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          children: [
+            Text(
+              '${format(previous)} → ${format(current)}',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 12,
+                color: AppTheme.fg,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            if (delta != null) ...[
+              const SizedBox(width: 6),
+              Text(
+                delta,
+                style: TextStyle(
+                  color: deltaColor,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ),
       ],
     );
   }

@@ -8,7 +8,7 @@ import '../cursor_shell.dart';
 /// Tooltip styling for fl_chart on the Monitor dark theme.
 Color chartTooltipBackground(_) => AppTheme.base02;
 
-TextStyle get chartTooltipTextStyle => GoogleFonts.plusJakartaSans(
+TextStyle get chartTooltipTextStyle => GoogleFonts.instrumentSans(
   color: AppTheme.textHeading,
   fontSize: 11,
   height: 1.35,
@@ -65,11 +65,15 @@ class ChartCard extends StatelessWidget {
   const ChartCard({
     super.key,
     required this.title,
+    this.subtitle,
+    this.legend,
     required this.child,
     this.height = 220,
   });
 
   final String title;
+  final String? subtitle;
+  final List<Widget>? legend;
   final Widget child;
   final double height;
 
@@ -77,6 +81,8 @@ class ChartCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return CursorPanel(
       title: title,
+      subtitle: subtitle,
+      legend: legend,
       child: SizedBox(height: height, child: child),
     );
   }
@@ -99,6 +105,7 @@ Color eventTypeColor(String type, {bool isRetry = false}) {
     case 'EDIT':
     case 'TEST_FAIL':
     case 'DIFF_REJECTED':
+    case 'COMMAND_FAILED':
       return AppTheme.warn;
     default:
       return AppTheme.muted;

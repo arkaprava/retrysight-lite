@@ -10,7 +10,7 @@ import {
   isIngestPath,
   isPublicPath,
 } from './auth.js'
-import { cleanupOldData, getDb, generateRawKey, insertApiKey, nowIso } from './db.js'
+import { cleanupOldData, getDb, generateRawKey, insertApiKey, nowIso, type TaskRow } from './db.js'
 import {
   assertAgentKey,
   batchRequestSchema,
@@ -19,12 +19,19 @@ import {
   registerOrResolveAgent,
   listAgents,
   listTasks,
+  listTasksForExport,
   getTask,
   listEvents,
   getAgent,
 } from './ingest.js'
 import { buildMcpConfig, createGraphqlYoga } from './graphql.js'
-import { getAgenticDashboard, getTaskTimeline, type DashboardFilters } from './metrics.js'
+import {
+  getAgenticDashboard,
+  getTaskTimeline,
+  getCostBudgetUsd,
+  setCostBudgetUsd,
+  type DashboardFilters,
+} from './metrics.js'
 import { getCollectorStatus, loadCollectorConfigs, sanitizeCollectorConfigMap, saveCollectorConfigs, type CollectorConfigMap } from './collectors/runtime.js'
 
 export async function createServer(): Promise<FastifyInstance> {
@@ -53,10 +60,14 @@ export async function createServer(): Promise<FastifyInstance> {
       .send({ error: status >= 500 ? 'Internal server error' : e.message || 'Error' })
   })
 
-  // Rate limiting: 100 req/min per IP on admin/ingest routes, 20 req/min on GraphQL
+  // Rate limiting: 100 req/min per IP by default on every route (including
+  // health/collectors/dashboard/agents/tasks/api-keys — previously only
+  // /graphql and /api/v1/ingest/* opted in under `global: false`, leaving the
+  // rest of the admin REST surface unlimited). Routes below override this
+  // default via their own `config.rateLimit` (GraphQL: 20/min, ingest: 60/min).
   try {
     await app.register(rateLimit, {
-      global: false,
+      global: true,
       max: 100,
       timeWindow: '1 minute',
       keyGenerator: (req) => req.ip,
@@ -208,6 +219,28 @@ export async function createServer(): Promise<FastifyInstance> {
     return { status: 'ok' }
   })
 
+  app.get('/api/v1/settings/budget', async () => ({
+    budgetUsd: getCostBudgetUsd(),
+  }))
+
+  app.put('/api/v1/settings/budget', async (req, reply) => {
+    const body = req.body as { budgetUsd?: unknown } | undefined
+    if (!body || typeof body !== 'object') {
+      return reply.code(400).send({ error: 'Invalid budget body' })
+    }
+    const raw = body.budgetUsd
+    if (raw === null || raw === undefined || raw === '') {
+      setCostBudgetUsd(null)
+      return { budgetUsd: null }
+    }
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value < 0 || value > 1_000_000) {
+      return reply.code(400).send({ error: 'budgetUsd must be a number between 0 and 1,000,000' })
+    }
+    setCostBudgetUsd(value)
+    return { budgetUsd: getCostBudgetUsd() }
+  })
+
   app.get('/api/v1/dashboard', async (req) => {
     const q = req.query as DashboardFilters
     return getAgenticDashboard(q)
@@ -233,6 +266,22 @@ export async function createServer(): Promise<FastifyInstance> {
       page: q.page ? Number(q.page) : 0,
       size: q.size ? Number(q.size) : 50,
     })
+  })
+
+  app.get('/api/v1/tasks/export.csv', async (req, reply) => {
+    const q = req.query as Record<string, string>
+    const rows = listTasksForExport({
+      agentId: q.agentId,
+      sourceTool: q.sourceTool,
+      from: q.from,
+      to: q.to,
+      minRetries: q.minRetries ? Number(q.minRetries) : undefined,
+    })
+    const csv = tasksToCsv(rows)
+    reply
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', 'attachment; filename="retrysight-tasks.csv"')
+    return csv
   })
 
   app.get('/api/v1/tasks/:id', async (req, reply) => {
@@ -304,4 +353,41 @@ function sendError(reply: { code: (n: number) => { send: (b: unknown) => unknown
     return reply.code(400).send({ error: first?.message ? String(first.message) : 'Invalid request' })
   }
   return reply.code(status).send({ error: e.message || 'Error' })
+}
+
+const TASK_CSV_COLUMNS: (keyof TaskRow)[] = [
+  'id',
+  'agent_id',
+  'source_tool',
+  'status',
+  'title',
+  'retry_count',
+  'input_tokens',
+  'output_tokens',
+  'started_at',
+  'ended_at',
+  'project_root',
+  'repo_name',
+  'git_branch',
+  'git_commit',
+  'remote_url',
+  'created_at',
+  'updated_at',
+]
+
+/** Quote a CSV field only when it needs it (contains a comma, quote, or
+ *  newline), doubling any embedded quotes — standard RFC 4180 escaping. */
+function csvField(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  const s = String(value)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+function tasksToCsv(rows: TaskRow[]): string {
+  const lines = [TASK_CSV_COLUMNS.join(',')]
+  for (const row of rows) {
+    lines.push(TASK_CSV_COLUMNS.map((col) => csvField(row[col])).join(','))
+  }
+  return lines.join('\r\n')
 }

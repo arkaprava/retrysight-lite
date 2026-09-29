@@ -67,8 +67,20 @@ class ConfigService {
     final prefs = await SharedPreferences.getInstance();
     // Persist admin token in the OS keychain — never in plaintext prefs.
     // Empty token means "leave existing secure-storage value unchanged".
+    // Best-effort: on an ad-hoc-signed (no Team ID) build, macOS Keychain
+    // writes can fail with errSecMissingEntitlement (-34018) even though the
+    // app never requested a shared access group. Swallow that here (as
+    // `_persistAdminToken` already does) so a Keychain failure never aborts
+    // the rest of this save — in particular, callers like
+    // `syncAdminTokenFromBackend` must still see this return normally so the
+    // corrected token reaches in-memory app state, even if it can't survive
+    // a restart via the keychain on this build.
     if (config.adminToken.isNotEmpty) {
-      await _secureStorage.write(key: _tokenKey, value: config.adminToken);
+      try {
+        await _secureStorage.write(key: _tokenKey, value: config.adminToken);
+      } catch (_) {
+        // Non-fatal — token still applies for this session; see comment above.
+      }
     }
     await prefs.remove(_legacyTokenKey);
     await prefs.remove(_legacyTokenKeyOld);
@@ -93,16 +105,17 @@ class ConfigService {
         : _defaultDataDir(bundledBinary, managerPath);
 
     var adminToken = config.adminToken;
-    final fileToken = await _readAdminTokenFromFiles(
-      dataDir: dataDir,
-      managerPath: managerPath,
-    );
-    if (fileToken.isNotEmpty) {
-      final preferFile =
-          adminToken.isEmpty ||
-          bundledBinary != null ||
-          adminToken != fileToken;
-      if (preferFile) {
+    // Only fall back to the on-disk token on first run (no token configured yet).
+    // Once a token is set, `syncAdminTokenFromBackend` (called after the backend
+    // starts) is the sole path that re-syncs it — otherwise a user-provided
+    // token (e.g. pointing at a different manager instance) gets silently
+    // clobbered by whatever the local data dir happens to contain.
+    if (adminToken.isEmpty) {
+      final fileToken = await _readAdminTokenFromFiles(
+        dataDir: dataDir,
+        managerPath: managerPath,
+      );
+      if (fileToken.isNotEmpty) {
         adminToken = fileToken;
       }
     }
@@ -148,10 +161,21 @@ class ConfigService {
     required String dataDir,
     required String managerPath,
   }) async {
+    // Only fall back to a dev checkout's `manager/data` when we're actually
+    // NOT running a bundled/installed binary. Including it unconditionally
+    // meant that on a machine that also has this repo checked out with a
+    // stale `manager/data/admin-token` left over from `npm run dev`, the
+    // installed app could pick up that unrelated dev token as its initial
+    // guess (before the real backend has started and written its own token),
+    // which then persists as a wrong, never-corrected token if the later
+    // resync also fails to persist (see `save`).
+    final extraDataDirs = AppPaths.resolveBackendBinary() == null
+        ? [p.join(_defaultManagerPath(), 'data')]
+        : const <String>[];
     for (final path in AppPaths.adminTokenFileCandidates(
       dataDir: dataDir,
       managerPath: managerPath,
-      extraDataDirs: [p.join(_defaultManagerPath(), 'data')],
+      extraDataDirs: extraDataDirs,
     )) {
       final token = await _readTokenFile(path);
       if (token.isNotEmpty) return token;

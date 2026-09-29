@@ -76,6 +76,28 @@ function num(obj: Record<string, unknown>, key: string): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
 }
 
+/** `message.content` from an Anthropic/OpenAI-style {role, message:{content:[...]}}
+ *  chat transcript line (verified against real Cursor agent-transcript jsonl
+ *  files — Cursor writes exactly this shape, not a flat {type/kind/event}
+ *  record), or undefined if `obj` isn't shaped like one. */
+function chatMessageContent(obj: Record<string, unknown>): unknown[] | undefined {
+  if (typeof obj.role !== 'string') return undefined
+  const message = obj.message
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return undefined
+  const content = (message as Record<string, unknown>).content
+  return Array.isArray(content) ? content : undefined
+}
+
+function firstChatText(content: unknown[]): string | undefined {
+  for (const block of content) {
+    if (block && typeof block === 'object' && (block as Record<string, unknown>).type === 'text') {
+      const text = (block as Record<string, unknown>).text
+      if (typeof text === 'string' && text.trim()) return text.trim()
+    }
+  }
+  return undefined
+}
+
 function extractIsoTimestamp(line: string): string | null {
   const match = line.match(ISO_TIMESTAMP_RE)
   return match ? match[0] : null
@@ -104,10 +126,12 @@ function extractProjectName(path: string): string | null {
 }
 
 /**
- * Generic flexible log collector supporting JSONL and plaintext formats.
- * Replaces JsonlTailCollector with configurable file patterns and log format.
+ * Generic flexible log collector supporting JSONL and plaintext formats,
+ * with configurable file patterns and log format per tool.
  */
 export class FlexibleLogCollector {
+  private readonly seenTaskIds = new Set<string>()
+
   constructor(
     private readonly sourceTool: string,
     private readonly roots: string[],
@@ -172,24 +196,42 @@ export class FlexibleLogCollector {
       str(obj, 'chatId') ||
       basename(path).replace(/.jsonl$/i, '').replace(/.log$/i, '')).replace(/[\/\\:?#\[\]@]/g, '_')
     const taskId = `${this.sourceTool}:${sessionId}`
-    const title = str(obj, 'title') || str(obj, 'message')?.slice(0, 80)
+    const chatContent = chatMessageContent(obj)
+    const title =
+      str(obj, 'title') ||
+      str(obj, 'message') ||
+      (chatContent ? firstChatText(chatContent)?.slice(0, 120) : undefined)
     const occurredAt = str(obj, 'timestamp') || str(obj, 'createdAt') || new Date().toISOString()
 
-    this.buffer.offerTaskStart({
-      taskId,
-      sourceTool: this.sourceTool,
-      title: title ?? null,
-      startedAt: occurredAt,
-      projectContext: {
-        projectRoot: str(obj, 'cwd') || str(obj, 'workspace') || null,
-        repoName: str(obj, 'repo') || basename(dirname(path)) || null,
-        gitBranch: null,
-        gitCommit: null,
-        remoteUrl: null,
-      },
-    })
+    // Only offer a taskStart once per session, not once per line. Every other
+    // collector in this codebase (ClaudeCollector, WarpSqliteCollector, the
+    // new CursorSqliteCollector) dedupes this way; this one didn't — on a
+    // session file with hundreds of lines, that meant hundreds of redundant
+    // taskStarts queued alongside real event items every poll. Verified this
+    // wasn't just wasteful: `EventBuffer.drain()` fully drains all queued
+    // taskStarts before ever touching items, so once taskStart volume roughly
+    // matched item volume (1:1, one of each per line), items were starved
+    // completely — no event ever reached task_events, no retry_count ever
+    // moved, for as long as the taskStart backlog stayed above the per-flush
+    // cap.
+    if (!this.seenTaskIds.has(taskId)) {
+      this.seenTaskIds.add(taskId)
+      this.buffer.offerTaskStart({
+        taskId,
+        sourceTool: this.sourceTool,
+        title: title ?? null,
+        startedAt: occurredAt,
+        projectContext: {
+          projectRoot: str(obj, 'cwd') || str(obj, 'workspace') || null,
+          repoName: str(obj, 'repo') || basename(dirname(path)) || null,
+          gitBranch: null,
+          gitCommit: null,
+          remoteUrl: null,
+        },
+      })
+    }
 
-    const typeHint = (str(obj, 'type') || str(obj, 'kind') || str(obj, 'event') || 'EDIT').toUpperCase()
+    const typeHint = (str(obj, 'type') || str(obj, 'kind') || str(obj, 'event') || '').toUpperCase()
     let eventType = 'EDIT'
     if (typeHint.includes('TEST')) eventType = 'TEST_FAIL'
     else if (typeHint.includes('COMPACT')) eventType = 'COMPACTION'
@@ -197,6 +239,17 @@ export class FlexibleLogCollector {
     else if (typeHint.includes('ACCEPT')) eventType = 'DIFF_ACCEPTED'
     else if (typeHint.includes('TOKEN') || obj.usage) eventType = 'TOKEN_USAGE'
     else if (typeHint.includes('START')) eventType = 'SESSION_START'
+    else if (!typeHint && chatContent) {
+      // No {type/kind/event} field at all, but shaped like a chat transcript
+      // line: only a real tool call is a meaningful action. Without this,
+      // every single conversational text turn (verified against real Cursor
+      // transcripts: ~2700 of ~3900 sampled lines were plain 'text' blocks,
+      // not tool calls) was counted as an 'EDIT' and inflated retry_count.
+      const hasToolUse = chatContent.some(
+        (c) => c && typeof c === 'object' && (c as Record<string, unknown>).type === 'tool_use',
+      )
+      eventType = hasToolUse ? 'EDIT' : 'CHAT_MESSAGE'
+    }
     else if (typeHint.includes('END')) eventType = 'SESSION_END'
 
     const usage =

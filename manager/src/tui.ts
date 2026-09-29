@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createRequire } from 'node:module'
+import { join } from 'node:path'
 import { config } from './config.js'
 import { barChart, fmtNum, kpiLine, pct, sparkline } from './charts.js'
 import {
@@ -11,8 +12,7 @@ import {
 import { getTask, listTasks } from './ingest.js'
 import { buildMcpConfig } from './graphql.js'
 
-const require = createRequire(import.meta.url)
-const blessed = require('blessed') as {
+type Blessed = {
   screen: (opts?: Record<string, unknown>) => {
     key: (keys: string | string[], handler: () => void) => void
     on: (event: string, handler: () => void) => void
@@ -24,6 +24,31 @@ const blessed = require('blessed') as {
     setLabel: (text: string) => void
     scroll: (offset: number) => void
   }
+}
+
+// See the matching comment in config.ts: `import.meta.url` is empty when this
+// file is bundled to CJS by esbuild for the `pkg`-packaged desktop app. This
+// used to blow up at *import* time (createRequire(undefined), then
+// `require('blessed')` failing pkg's static asset detection since it goes
+// through a dynamically-constructed `require`) — before `--headless` was even
+// checked, crashing the packaged binary on every launch. `blessed` is now
+// loaded lazily, only when the TUI actually starts, so the headless
+// embedded-backend path (the only path the desktop app uses) never touches it.
+function moduleUrl(): string {
+  try {
+    return import.meta.url || (() => { throw new Error('empty import.meta.url') })()
+  } catch {
+    return `file://${join(process.cwd(), 'index.js')}`
+  }
+}
+
+let blessedModule: Blessed | null = null
+function loadBlessed(): Blessed {
+  if (!blessedModule) {
+    const require = createRequire(moduleUrl())
+    blessedModule = require('blessed') as Blessed
+  }
+  return blessedModule
 }
 
 type View = 'dashboard' | 'tasks' | 'task' | 'mcp'
@@ -91,6 +116,7 @@ const THEME = {
 }
 
 export function startTui(apiPort: number) {
+  const blessed = loadBlessed()
   const screen = blessed.screen({
     smartCSR: true,
     title: 'RetrySight Lite',

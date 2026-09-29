@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 import '../models/app_config.dart';
 import '../models/collector_config.dart';
 import '../providers/app_providers.dart';
+import '../providers/notification_settings_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/platform_file_ops.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cursor_shell.dart';
@@ -23,12 +25,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _managerCtrl;
   late final TextEditingController _dataDirCtrl;
   late final TextEditingController _tokenCtrl;
+  late final TextEditingController _budgetCtrl;
   final ScrollController _scrollCtrl = ScrollController();
   bool _autoStart = true;
   bool _useTls = false;
   bool _obscureToken = true;
   bool _resetting = false;
   bool _loaded = false;
+  bool _budgetLoaded = false;
+  bool _loadingBudget = false;
+  bool _savingBudget = false;
 
   final Map<String, TextEditingController> _pathCtrls = {};
   final Map<String, TextEditingController> _patternCtrls = {};
@@ -67,6 +73,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _managerCtrl = TextEditingController();
     _dataDirCtrl = TextEditingController();
     _tokenCtrl = TextEditingController();
+    _budgetCtrl = TextEditingController();
     for (final entry in _collectorFields) {
       _pathCtrls[entry.$1] = TextEditingController();
       _patternCtrls[entry.$1] = TextEditingController();
@@ -81,6 +88,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _managerCtrl.dispose();
     _dataDirCtrl.dispose();
     _tokenCtrl.dispose();
+    _budgetCtrl.dispose();
     _scrollCtrl.dispose();
     for (final c in _pathCtrls.values) {
       c.dispose();
@@ -105,6 +113,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
     _loaded = true;
     _fetchCollectorConfigs();
+    _fetchBudget();
   }
 
   String _pathValue(AppConfig config, String key) {
@@ -149,6 +158,65 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _configsLoaded = true;
     } finally {
       _loadingConfigs = false;
+    }
+  }
+
+  Future<void> _fetchBudget() async {
+    if (_budgetLoaded || _loadingBudget) return;
+    _loadingBudget = true;
+    try {
+      final api = ref.read(apiServiceProvider);
+      final budget = await api.getCostBudget();
+      _budgetCtrl.text = budget == null ? '' : budget.toStringAsFixed(2);
+      _budgetLoaded = true;
+      if (mounted) setState(() {});
+    } catch (_) {
+      _budgetLoaded = true;
+    } finally {
+      _loadingBudget = false;
+    }
+  }
+
+  Future<void> _saveBudget() async {
+    final raw = _budgetCtrl.text.trim();
+    final value = raw.isEmpty ? null : double.tryParse(raw);
+    if (raw.isNotEmpty && value == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Enter a valid number for the budget'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+      return;
+    }
+    setState(() => _savingBudget = true);
+    try {
+      final api = ref.read(apiServiceProvider);
+      await api.setCostBudget(value);
+      ref.invalidate(backendReadyProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value == null ? 'Budget cleared' : 'Budget saved',
+            ),
+            backgroundColor: AppTheme.base2,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save budget: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingBudget = false);
     }
   }
 
@@ -309,6 +377,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final backend = ref.watch(backendServiceProvider);
     final collectorsAsync = ref.watch(collectorStatusProvider);
     final agentsAsync = ref.watch(agentsProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return configAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -330,6 +399,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  CursorPanel(
+                    title: 'Appearance',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Theme',
+                          style: TextStyle(fontSize: 13, color: AppTheme.fg),
+                        ),
+                        const SizedBox(height: 8),
+                        SegmentedButton<ThemeMode>(
+                          segments: const [
+                            ButtonSegment(
+                              value: ThemeMode.system,
+                              label: Text('System'),
+                              icon: Icon(Icons.brightness_auto_outlined),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.light,
+                              label: Text('Light'),
+                              icon: Icon(Icons.light_mode_outlined),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.dark,
+                              label: Text('Dark'),
+                              icon: Icon(Icons.dark_mode_outlined),
+                            ),
+                          ],
+                          selected: {themeMode},
+                          onSelectionChanged: (selection) {
+                            ref
+                                .read(themeModeProvider.notifier)
+                                .setThemeMode(selection.first);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  CursorPanel(
+                    title: 'Cost budget',
+                    subtitle:
+                        'Optional spend ceiling — the dashboard flags when you\'re close to it',
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _budgetCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Budget (USD)',
+                              helperText: 'Leave blank to disable',
+                              prefixText: '\$ ',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        FilledButton(
+                          onPressed: _savingBudget ? null : _saveBudget,
+                          child: _savingBudget
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   CursorPanel(
                     title: 'Preferences',
                     child: Column(

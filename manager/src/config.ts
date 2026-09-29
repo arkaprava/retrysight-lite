@@ -6,8 +6,22 @@ import { randomBytes } from 'node:crypto'
 import { dirname, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const root = resolve(__dirname, '..')
+// `import.meta.url` is only valid under real ESM (tsx dev, `node dist/index.js`).
+// The desktop-app packaging path (scripts/build-bundle.mjs) bundles this file
+// with esbuild into a single CJS output for `pkg` — there, `import.meta.url` is
+// always empty (esbuild warns "import.meta is not available with the cjs
+// output format"), so `fileURLToPath(undefined)` used to throw at import time,
+// crashing the packaged binary before it could even parse `--headless`. `root`
+// is only a fallback default (real deployments always pass RETRYSIGHT_DATA_DIR
+// / RETRYSIGHT_DB_PATH explicitly), so falling back to cwd there is safe.
+function resolveRoot(): string {
+  try {
+    return resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  } catch {
+    return resolve(process.cwd())
+  }
+}
+const root = resolveRoot()
 
 function legacyEnvName(name: string): string | undefined {
   if (!name.startsWith('RETRYSIGHT_')) return undefined

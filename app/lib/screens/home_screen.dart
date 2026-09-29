@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_info.dart';
 import '../models/task.dart';
 import '../providers/app_providers.dart';
+import '../providers/notification_watcher_provider.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/cursor_shell.dart';
@@ -22,6 +24,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _index = 0;
   String? _selectedTaskId;
+
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.instance.init();
+  }
 
   static const _navItems = [
     CursorNavItem(
@@ -69,6 +77,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Kept alive for the app's lifetime (HomeScreen never gets disposed while
+    // running) so notifications fire regardless of which tab is visible.
+    ref.watch(notificationWatcherProvider);
     final config = ref.watch(appConfigProvider);
     final backend = ref.watch(backendServiceProvider);
     final healthAsync = ref.watch(healthProvider);

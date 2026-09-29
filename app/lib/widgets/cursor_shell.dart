@@ -66,7 +66,7 @@ class CursorActivityBar extends StatelessWidget {
                         children: [
                           Text(
                             kAppName,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: GoogleFonts.bricolageGrotesque(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
                               color: isDark
@@ -77,7 +77,7 @@ class CursorActivityBar extends StatelessWidget {
                           ),
                           Text(
                             'Performance Monitoring',
-                            style: GoogleFonts.plusJakartaSans(
+                            style: GoogleFonts.instrumentSans(
                               fontSize: 10,
                               color: AppTheme.muted,
                             ),
@@ -208,7 +208,7 @@ class _SidebarNavItemState extends State<_SidebarNavItem> {
                   Expanded(
                     child: Text(
                       widget.item.label,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: GoogleFonts.instrumentSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: fg,
@@ -257,7 +257,7 @@ class CursorTitleBar extends StatelessWidget {
         children: [
           Text(
             title,
-            style: GoogleFonts.plusJakartaSans(
+            style: GoogleFonts.bricolageGrotesque(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: isDark ? AppTheme.textHeading : AppTheme.lightTextPrimary,
@@ -354,53 +354,77 @@ class CursorPanel extends StatelessWidget {
   const CursorPanel({
     super.key,
     required this.title,
+    this.subtitle,
     required this.child,
     this.actions,
+    this.legend,
   });
 
   final String title;
+  final String? subtitle;
   final Widget child;
   final List<Widget>? actions;
+
+  /// Small colored-dot + label items shown at the right of the header — for
+  /// e.g. a multi-series chart's legend, so it reads together with the title
+  /// instead of floating separately under the chart.
+  final List<Widget>? legend;
 
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
     return AppTheme.glassPanel(
       brightness: brightness,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: brightness == Brightness.dark
-                      ? AppTheme.borderGlass
-                      : AppTheme.lightBorder,
-                ),
-              ),
-            ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, subtitle == null ? 12 : 10),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title.toUpperCase(),
-                  style: GoogleFonts.plusJakartaSans(
-                    color: brightness == Brightness.dark
-                        ? AppTheme.accent
-                        : AppTheme.lightAccent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.bricolageGrotesque(
+                          color: isDark
+                              ? AppTheme.textHeading
+                              : AppTheme.lightTextPrimary,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: GoogleFonts.instrumentSans(
+                            color: AppTheme.muted,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const Spacer(),
+                if (legend != null)
+                  Wrap(
+                    spacing: 14,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: legend!,
+                  ),
                 ...?actions,
               ],
             ),
           ),
-          Padding(padding: const EdgeInsets.all(14), child: child),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: child,
+          ),
         ],
       ),
     );
@@ -418,7 +442,7 @@ class CursorSectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8, top: 4),
       child: Text(
         '┃ ${title.toUpperCase()}',
-        style: GoogleFonts.plusJakartaSans(
+        style: GoogleFonts.instrumentSans(
           color: AppTheme.accent,
           fontSize: 11,
           fontWeight: FontWeight.w600,

@@ -1,7 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { config } from './config.js'
-import { getDb } from './db.js'
+import { getDb, getSetting, setSetting, deleteSetting } from './db.js'
+
+const BUDGET_SETTING_KEY = 'cost_budget_usd'
+
+/** Monthly (or whatever period the user checks) cost budget, in USD. Stored
+ *  as a runtime setting (not an env var) so it can be changed from the
+ *  Settings screen without restarting the backend. `null`/absent means no
+ *  budget is configured. */
+export function getCostBudgetUsd(): number | null {
+  const raw = getSetting(BUDGET_SETTING_KEY)
+  if (!raw) return null
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+export function setCostBudgetUsd(value: number | null): void {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    deleteSetting(BUDGET_SETTING_KEY)
+    return
+  }
+  setSetting(BUDGET_SETTING_KEY, String(value))
+}
 
 export type DashboardFilters = {
   from?: string
@@ -112,6 +133,22 @@ export type AgenticDashboard = {
   prevAvgSessionMinutes: number
   estimatedCostUsd: number
   prevEstimatedCostUsd: number
+  budgetUsd: number | null
+  budgetUsedFraction: number | null
+  periodComparisons: PeriodComparison[]
+}
+
+export type PeriodTotals = {
+  taskCount: number
+  totalRetries: number
+  retryRate: number
+  estimatedCostUsd: number
+}
+
+export type PeriodComparison = {
+  label: string
+  current: PeriodTotals
+  previous: PeriodTotals
 }
 
 /**
@@ -503,6 +540,65 @@ function totalEstimatedCost(models: LlmModelStats[]): number {
   return models.reduce((sum, m) => sum + m.estimatedCostUsd, 0)
 }
 
+/** Totals for an arbitrary absolute [from, to) window, keeping the caller's
+ *  other filters (tool/agent/model) but overriding the date range — used for
+ *  the fixed week-over-week / month-over-month comparisons, which are
+ *  independent of whatever range the dashboard's own from/to filter has
+ *  selected. */
+function computeWindowTotals(
+  db: ReturnType<typeof getDb>,
+  filters: DashboardFilters,
+  from: string,
+  to: string,
+): PeriodTotals {
+  const windowFilters: DashboardFilters = { ...filters, from, to }
+  const { sql: where, params } = taskWhere(windowFilters)
+  const row = db
+    .prepare(
+      `SELECT
+        COALESCE(COUNT(*), 0) AS taskCount,
+        COALESCE(SUM(t.retry_count), 0) AS totalRetries,
+        COALESCE(SUM(CASE WHEN t.retry_count > 0 THEN 1 ELSE 0 END), 0) AS tasksWithRetries
+       FROM tasks t ${where}`,
+    )
+    .get(...params) as { taskCount: number; totalRetries: number; tasksWithRetries: number }
+  const estimatedCostUsd = totalEstimatedCost(
+    aggregateModelStats(db, where, params, filters.model),
+  )
+  return {
+    taskCount: row.taskCount,
+    totalRetries: row.totalRetries,
+    retryRate: row.taskCount ? row.tasksWithRetries / row.taskCount : 0,
+    estimatedCostUsd,
+  }
+}
+
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString()
+}
+
+/** Fixed week-over-week and month-over-month comparisons, independent of the
+ *  dashboard's own selected date range (which only ever compares against the
+ *  immediately-preceding equal-length window via the `prev*` fields above). */
+function computePeriodComparisons(
+  db: ReturnType<typeof getDb>,
+  filters: DashboardFilters,
+): PeriodComparison[] {
+  const now = new Date().toISOString()
+  return [
+    {
+      label: 'Week over week',
+      current: computeWindowTotals(db, filters, daysAgoIso(7), now),
+      previous: computeWindowTotals(db, filters, daysAgoIso(14), daysAgoIso(7)),
+    },
+    {
+      label: 'Month over month',
+      current: computeWindowTotals(db, filters, daysAgoIso(30), now),
+      previous: computeWindowTotals(db, filters, daysAgoIso(60), daysAgoIso(30)),
+    },
+  ]
+}
+
 export function getAgenticDashboard(filters: DashboardFilters = {}): AgenticDashboard {
   const db = getDb()
   const { sql: where, params } = taskWhere(filters)
@@ -570,6 +666,7 @@ export function getAgenticDashboard(filters: DashboardFilters = {}): AgenticDash
 
   const byModel = aggregateModelStats(db, where, params, filters.model)
   const estimatedCostUsd = totalEstimatedCost(byModel)
+  const budgetUsd = getCostBudgetUsd()
 
   const retryTrend = db
     .prepare(
@@ -917,6 +1014,10 @@ export function getAgenticDashboard(filters: DashboardFilters = {}): AgenticDash
     availableAgents: (
       db.prepare('SELECT id, name FROM agents ORDER BY name').all() as { id: string; name: string }[]
     ),
+    budgetUsd,
+    budgetUsedFraction:
+      budgetUsd != null && budgetUsd > 0 ? estimatedCostUsd / budgetUsd : null,
+    periodComparisons: computePeriodComparisons(db, filters),
   }
 }
 
@@ -929,7 +1030,7 @@ export type TimelineEvent = {
   payload: Record<string, unknown> | null
 }
 
-const RETRY_TYPES = new Set(['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION'])
+const RETRY_TYPES = new Set(['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION', 'COMMAND_FAILED'])
 
 export function getTaskTimeline(taskId: string): TimelineEvent[] {
   const rows = getDb()
@@ -967,6 +1068,9 @@ function summarizeEvent(type: string, payload: Record<string, unknown> | null): 
     return `${payload.model || 'model'}  in=${payload.inputTokens ?? 0}  out=${payload.outputTokens ?? 0}`
   }
   if (type === 'SUBAGENT' && payload?.name) return `subagent ${payload.name}`
+  if (type === 'COMMAND_FAILED' && payload?.exitCode != null) {
+    return `command failed (exit ${payload.exitCode})`
+  }
   if (payload?.note) return String(payload.note)
   if (payload?.test) return `test ${payload.test}`
   return type.replaceAll('_', ' ').toLowerCase()

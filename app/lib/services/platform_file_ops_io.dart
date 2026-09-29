@@ -20,3 +20,20 @@ Future<void> deleteSqliteDatabaseFiles(String dataDirPath) async {
     await file.delete();
   }
 }
+
+/// Writes exported CSV text to the user's Downloads folder (falling back to
+/// their home directory if Downloads doesn't exist), returning the saved
+/// path. No file-picker dependency — this is the same "just land it in
+/// Downloads" behavior most desktop export features use.
+Future<String> saveCsvExport(String csv, String suggestedFileName) async {
+  final home =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  if (home == null || home.isEmpty) {
+    throw StateError('Could not determine a home directory to save into');
+  }
+  final downloads = Directory(p.join(home, 'Downloads'));
+  final targetDir = await downloads.exists() ? downloads.path : home;
+  final file = File(p.join(targetDir, suggestedFileName));
+  await file.writeAsString(csv);
+  return file.path;
+}
