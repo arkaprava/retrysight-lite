@@ -1030,7 +1030,7 @@ export type TimelineEvent = {
   payload: Record<string, unknown> | null
 }
 
-const RETRY_TYPES = new Set(['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION', 'COMMAND_FAILED'])
+const RETRY_TYPES = new Set(['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION', 'COMMAND_FAILED', 'TOOL_ERROR'])
 
 export function getTaskTimeline(taskId: string): TimelineEvent[] {
   const rows = getDb()
@@ -1063,6 +1063,28 @@ export function getTaskTimeline(taskId: string): TimelineEvent[] {
   })
 }
 
+/** The tool_use block's `name` from a raw JSONL transcript line's payload,
+ *  checking both the flat `{content: [...]}` shape and the nested
+ *  `{message: {content: [...]}}` shape (real Claude Code transcripts). */
+function firstToolName(payload: Record<string, unknown> | null): string | undefined {
+  if (!payload) return undefined
+  const message = payload.message
+  const content = Array.isArray(payload.content)
+    ? payload.content
+    : message && typeof message === 'object' && !Array.isArray(message) &&
+        Array.isArray((message as Record<string, unknown>).content)
+      ? ((message as Record<string, unknown>).content as unknown[])
+      : undefined
+  if (!Array.isArray(content)) return undefined
+  for (const block of content) {
+    if (block && typeof block === 'object' && (block as Record<string, unknown>).type === 'tool_use') {
+      const name = (block as Record<string, unknown>).name
+      if (typeof name === 'string') return name
+    }
+  }
+  return undefined
+}
+
 function summarizeEvent(type: string, payload: Record<string, unknown> | null): string {
   if (type === 'TOKEN_USAGE' && payload) {
     return `${payload.model || 'model'}  in=${payload.inputTokens ?? 0}  out=${payload.outputTokens ?? 0}`
@@ -1073,5 +1095,12 @@ function summarizeEvent(type: string, payload: Record<string, unknown> | null): 
   }
   if (payload?.note) return String(payload.note)
   if (payload?.test) return `test ${payload.test}`
+  if (type === 'EDIT' || type === 'TOOL_CALL' || type === 'TOOL_ERROR') {
+    const toolName = firstToolName(payload)
+    if (toolName) {
+      const label = type === 'TOOL_ERROR' ? 'tool error' : type === 'TOOL_CALL' ? 'tool call' : 'edit'
+      return `${label}: ${toolName}`
+    }
+  }
   return type.replaceAll('_', ' ').toLowerCase()
 }

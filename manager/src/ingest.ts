@@ -326,7 +326,7 @@ export function processBatch(agentId: string, body: BatchRequest) {
         ts,
       )
       eventsAccepted += 1
-      if (['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION', 'COMMAND_FAILED'].includes(item.eventType)) {
+      if (['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION', 'COMMAND_FAILED', 'TOOL_ERROR'].includes(item.eventType)) {
         bumpRetry.run(ts, item.taskId, agentId)
       }
     } else if (item.type === 'TOKEN_USAGE') {
