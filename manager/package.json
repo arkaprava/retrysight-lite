@@ -16,7 +16,8 @@
     "start:api": "NODE_OPTIONS=--experimental-sqlite RETRYSIGHT_HEADLESS=1 node dist/index.js",
     "mcp": "tsx src/mcp-stdio.ts",
     "mcp:dist": "node dist/mcp-stdio.js",
-    "smoke": "node --experimental-sqlite smoke-test.mjs"
+    "smoke": "node --experimental-sqlite smoke-test.mjs",
+    "reclassify-claude-code-events": "NODE_OPTIONS=--experimental-sqlite tsx scripts/reclassify-claude-code-events.ts"
   },
   "engines": {
     "node": ">=22.5"

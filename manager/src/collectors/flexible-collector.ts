@@ -76,16 +76,36 @@ function num(obj: Record<string, unknown>, key: string): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
 }
 
-/** `message.content` from an Anthropic/OpenAI-style {role, message:{content:[...]}}
- *  chat transcript line (verified against real Cursor agent-transcript jsonl
- *  files — Cursor writes exactly this shape, not a flat {type/kind/event}
- *  record), or undefined if `obj` isn't shaped like one. */
+function asRecordOrUndefined(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined
+}
+
+/** Resolves the `{role, content}` chat message from either shape a JSONL
+ *  transcript line uses: a flat top-level `{role, content}` (legacy Cursor
+ *  jsonl shape, now moot since Cursor writes sqlite instead — kept for any
+ *  other tool that still uses it), or nested under `message`, i.e.
+ *  `{type, message: {role, content, usage, model}}` — the real Claude Code
+ *  CLI transcript shape (verified against real ~/.claude/projects/*.jsonl
+ *  files: the outer object's own `role` is always absent; the actual API
+ *  response, role included, lives at `obj.message`). */
+function resolveChatMessage(obj: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (typeof obj.role === 'string') return obj
+  const nested = asRecordOrUndefined(obj.message)
+  return nested && typeof nested.role === 'string' ? nested : undefined
+}
+
+/** `content` from a resolved chat message, normalized to an array of blocks.
+ *  A user's own typed turn often stores `content` as a plain string rather
+ *  than an array of blocks (verified: 14 of 215 real 'user' lines in a
+ *  sampled transcript) — wrapped here as a single text block so callers
+ *  don't need to special-case it. */
 function chatMessageContent(obj: Record<string, unknown>): unknown[] | undefined {
-  if (typeof obj.role !== 'string') return undefined
-  const message = obj.message
-  if (!message || typeof message !== 'object' || Array.isArray(message)) return undefined
-  const content = (message as Record<string, unknown>).content
-  return Array.isArray(content) ? content : undefined
+  const message = resolveChatMessage(obj)
+  if (!message) return undefined
+  const content = message.content
+  if (Array.isArray(content)) return content
+  if (typeof content === 'string' && content.trim()) return [{ type: 'text', text: content }]
+  return undefined
 }
 
 function firstChatText(content: unknown[]): string | undefined {
@@ -96,6 +116,114 @@ function firstChatText(content: unknown[]): string | undefined {
     }
   }
   return undefined
+}
+
+function isToolUseBlock(c: unknown): c is Record<string, unknown> {
+  return !!c && typeof c === 'object' && (c as Record<string, unknown>).type === 'tool_use'
+}
+
+function isToolResultBlock(c: unknown): c is Record<string, unknown> {
+  return !!c && typeof c === 'object' && (c as Record<string, unknown>).type === 'tool_result'
+}
+
+/** Tool names that actually mutate the workspace. Everything else a real
+ *  agentic tool call can do (Read, Grep, Glob, Bash, Task, WebFetch, …) is
+ *  genuine agent activity but not itself a retry-worthy edit. */
+const MUTATING_TOOL_NAMES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+
+/** Classifies a resolved chat message's content blocks into a concrete event
+ *  type. A `tool_result` carrying `is_error: true` is the clearest signal a
+ *  real agentic transcript gives us that something needed retrying — the
+ *  agent's last action failed — so it wins regardless of which tool it was.
+ *  Absent an error, only a mutating tool call counts as `EDIT`; every other
+ *  tool call is real activity but not a retry signal, so it's `TOOL_CALL`,
+ *  not `EDIT` — tagging *every* tool_use as EDIT would just reproduce the
+ *  original overcounting bug one step more precisely. */
+function classifyChatContent(content: unknown[]): string {
+  const toolResults = content.filter(isToolResultBlock)
+  if (toolResults.some((b) => b.is_error === true)) return 'TOOL_ERROR'
+  const toolUses = content.filter(isToolUseBlock)
+  if (toolUses.length) {
+    const hasMutatingTool = toolUses.some((b) => typeof b.name === 'string' && MUTATING_TOOL_NAMES.has(b.name as string))
+    return hasMutatingTool ? 'EDIT' : 'TOOL_CALL'
+  }
+  // A tool_result with no error is the other half of a (non-mutating or
+  // mutating) tool call — neutral activity, not free-text chat.
+  if (toolResults.length) return 'TOOL_CALL'
+  return 'CHAT_MESSAGE'
+}
+
+export type JsonlEventClassification = {
+  /** The eventType an EVENT item should carry — always set, even when
+   *  `isTokenUsageLine` is true and no EVENT item ends up being emitted for
+   *  this particular line (`eventType === 'TOKEN_USAGE'` in that case). */
+  eventType: string
+  /** The resolved usage object (top-level `obj.usage`, or the real Claude
+   *  Code `obj.message.usage`), if any. */
+  usage: Record<string, unknown> | undefined
+  /** The resolved `message` object (`obj.message`), if any. */
+  message: Record<string, unknown> | undefined
+  /** Whether this line should also produce a TOKEN_USAGE item, independent
+   *  of `eventType` — a real assistant turn carries both a `message.usage`
+   *  and (often) a tool_use in the very same line. */
+  isTokenUsageLine: boolean
+}
+
+/** Pure classification decision shared by the live collector
+ * (`FlexibleLogCollector.handleJsonlLine`) and the one-off
+ * `reclassify-claude-code-events` backfill script, so the two can never
+ * drift out of sync. `sourceTool` only affects the final fallback (see
+ * inline comment below). */
+export function classifyJsonlEvent(obj: Record<string, unknown>, sourceTool: string): JsonlEventClassification {
+  const chatContent = chatMessageContent(obj)
+  // Real Claude Code CLI transcripts wrap the actual API response inside a
+  // `message` object (`{type, message: {role, content, usage, model}}`),
+  // not at the top level — verified against a real transcript file where
+  // 0 of 1174 content lines had a top-level `usage`, but 365 had
+  // `message.usage`. `obj.usage` is kept as the first choice so any other
+  // tool that genuinely puts usage at the top level still works.
+  const message = asRecordOrUndefined(obj.message)
+  const usage = asRecordOrUndefined(obj.usage) ?? (message ? asRecordOrUndefined(message.usage) : undefined)
+
+  const typeHint = (str(obj, 'type') || str(obj, 'kind') || str(obj, 'event') || '').toUpperCase()
+  // Real Claude Code lines DO have a top-level `type` ('assistant'/'user'),
+  // unlike the Cursor-era assumption baked into the old `!typeHint` guard
+  // below — so chat-content classification must still run for those two
+  // envelope values specifically (verified: neither, nor any other real
+  // envelope type seen — 'system', 'attachment', 'custom-title', etc. —
+  // ever collides with the TEST/COMPACT/REJECT/ACCEPT/TOKEN/START
+  // substring checks above, so this can't shadow another tool's signal).
+  const looksLikeChatEnvelope = !typeHint || typeHint === 'ASSISTANT' || typeHint === 'USER'
+  const chatEventType = chatContent && looksLikeChatEnvelope ? classifyChatContent(chatContent) : undefined
+  // A real assistant turn carries `message.usage` on the SAME line as any
+  // tool_use block it makes (verified: all 365 sampled 'assistant' lines
+  // had usage, 202 of those also had a tool_use) — so token accounting and
+  // activity classification are two separate facts about one line, not
+  // alternatives. Emit up to one item of each kind instead of picking one.
+  const isTokenUsageLine = usage != null || typeHint.includes('TOKEN')
+
+  let eventType: string
+  if (typeHint.includes('TEST')) eventType = 'TEST_FAIL'
+  else if (typeHint.includes('COMPACT')) eventType = 'COMPACTION'
+  else if (typeHint.includes('REJECT')) eventType = 'DIFF_REJECTED'
+  else if (typeHint.includes('ACCEPT')) eventType = 'DIFF_ACCEPTED'
+  else if (chatEventType) eventType = chatEventType
+  else if (isTokenUsageLine) eventType = 'TOKEN_USAGE'
+  else if (typeHint.includes('START')) eventType = 'SESSION_START'
+  else if (typeHint.includes('END')) eventType = 'SESSION_END'
+  // Falling all the way through means: an explicit `type` we don't
+  // recognize, and (for CLAUDE_CODE) not chat-shaped either — real Claude
+  // Code transcripts carry plenty of these (bridge-session,
+  // queue-operation, attachment, custom-title, atis-latch, last-prompt,
+  // system, pr-link, file-history-snapshot/-delta, mode, agent-name,
+  // cost-state — verified against a real transcript: 595 of 1175 lines).
+  // These are session/product bookkeeping, not edits, and defaulting them
+  // to 'EDIT' was the other half of the original overcounting bug. Scoped
+  // to CLAUDE_CODE specifically (where the real shape is now verified) so
+  // an unverified tool sharing this collector keeps its prior behavior.
+  else eventType = sourceTool === 'CLAUDE_CODE' ? 'OTHER' : 'EDIT'
+
+  return { eventType, usage, message, isTokenUsageLine }
 }
 
 function extractIsoTimestamp(line: string): string | null {
@@ -231,37 +359,13 @@ export class FlexibleLogCollector {
       })
     }
 
-    const typeHint = (str(obj, 'type') || str(obj, 'kind') || str(obj, 'event') || '').toUpperCase()
-    let eventType = 'EDIT'
-    if (typeHint.includes('TEST')) eventType = 'TEST_FAIL'
-    else if (typeHint.includes('COMPACT')) eventType = 'COMPACTION'
-    else if (typeHint.includes('REJECT')) eventType = 'DIFF_REJECTED'
-    else if (typeHint.includes('ACCEPT')) eventType = 'DIFF_ACCEPTED'
-    else if (typeHint.includes('TOKEN') || obj.usage) eventType = 'TOKEN_USAGE'
-    else if (typeHint.includes('START')) eventType = 'SESSION_START'
-    else if (!typeHint && chatContent) {
-      // No {type/kind/event} field at all, but shaped like a chat transcript
-      // line: only a real tool call is a meaningful action. Without this,
-      // every single conversational text turn (verified against real Cursor
-      // transcripts: ~2700 of ~3900 sampled lines were plain 'text' blocks,
-      // not tool calls) was counted as an 'EDIT' and inflated retry_count.
-      const hasToolUse = chatContent.some(
-        (c) => c && typeof c === 'object' && (c as Record<string, unknown>).type === 'tool_use',
-      )
-      eventType = hasToolUse ? 'EDIT' : 'CHAT_MESSAGE'
-    }
-    else if (typeHint.includes('END')) eventType = 'SESSION_END'
+    const { eventType, usage, message, isTokenUsageLine } = classifyJsonlEvent(obj, this.sourceTool)
 
-    const usage =
-      obj.usage && typeof obj.usage === 'object' && !Array.isArray(obj.usage)
-        ? (obj.usage as Record<string, unknown>)
-        : null
-
-    if (eventType === 'TOKEN_USAGE' || usage) {
+    if (isTokenUsageLine) {
       this.buffer.offerItem({
         type: 'TOKEN_USAGE',
         taskId,
-        model: str(obj, 'model') || (usage ? str(usage, 'model') : undefined) || null,
+        model: str(obj, 'model') || (message && str(message, 'model')) || (usage ? str(usage, 'model') : undefined) || null,
         inputTokens:
           (usage ? num(usage, 'input_tokens') ?? num(usage, 'inputTokens') : undefined) ??
           num(obj, 'inputTokens') ??
@@ -272,7 +376,8 @@ export class FlexibleLogCollector {
           null,
         occurredAt,
       })
-    } else {
+    }
+    if (eventType !== 'TOKEN_USAGE') {
       this.buffer.offerItem({
         type: 'EVENT',
         taskId,
