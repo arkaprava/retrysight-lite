@@ -11,6 +11,7 @@ import { EventBuffer } from './event-buffer.js'
 import { FlexibleLogCollector, type CollectorConfig, type LogFormat } from './flexible-collector.js'
 import { WarpSqliteCollector } from './warp-sqlite.js'
 import { ClaudeCollector } from './claude-collector.js'
+import { CursorSqliteCollector } from './cursor-sqlite.js'
 
 export type CollectorRuntimeStatus = {
   enabled: boolean
@@ -131,6 +132,15 @@ export function getCollectorConfigs(): CollectorConfigMap {
 function findWarpSqlite(roots: string[]): string | null {
   for (const root of roots) {
     const candidate = join(root, 'warp.sqlite')
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+/** Look for Cursor's AI-code-tracking DB inside any of the given root directories. */
+function findCursorAiTrackingDb(roots: string[]): string | null {
+  for (const root of roots) {
+    const candidate = join(root, 'ai-tracking', 'ai-code-tracking.db')
     if (existsSync(candidate)) return candidate
   }
   return null
@@ -336,6 +346,19 @@ export function startCollectors(): CollectorRuntimeStatus {
   }
 
   addCollector('CURSOR', config.cursorEnabled, config.cursorWatchPaths, defaultCursorPaths)
+
+  // CURSOR: SQLite collector for the AI-code-attribution DB, alongside the
+  // file-based collector above (which stays as a harmless no-op fallback for
+  // any `.jsonl` files an older/different Cursor version might still write).
+  if (config.cursorEnabled) {
+    const cursorRoots = existingPaths(config.cursorWatchPaths, defaultCursorPaths())
+    const cursorDbPath = findCursorAiTrackingDb(cursorRoots)
+    if (cursorDbPath) {
+      collectors.push(new CursorSqliteCollector('CURSOR', cursorDbPath, buffer!))
+      collectorNames.push('CURSOR_SQLITE')
+    }
+  }
+
   addCollector('CLAUDE_CODE', config.claudeEnabled, config.claudeWatchPaths, defaultClaudePaths)
 
   // CLAUDE: dedicated collector for Code CLI config, Desktop LevelDB, and debug logs

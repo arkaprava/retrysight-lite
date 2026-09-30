@@ -70,7 +70,7 @@ class _AnimatedKpiCardState extends State<AnimatedKpiCard> {
         children: [
           Text(
             widget.label.toUpperCase(),
-            style: GoogleFonts.plusJakartaSans(
+            style: GoogleFonts.instrumentSans(
               color: AppTheme.muted,
               fontSize: 10,
               letterSpacing: 0.5,
@@ -110,6 +110,7 @@ class KpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
     return AppTheme.glassPanel(
       brightness: brightness,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -118,7 +119,7 @@ class KpiCard extends StatelessWidget {
         children: [
           Text(
             label.toUpperCase(),
-            style: GoogleFonts.plusJakartaSans(
+            style: GoogleFonts.instrumentSans(
               color: AppTheme.muted,
               fontSize: 10,
               letterSpacing: 0.5,
@@ -131,7 +132,7 @@ class KpiCard extends StatelessWidget {
             style: GoogleFonts.jetBrainsMono(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: AppTheme.accent,
+              color: isDark ? AppTheme.textHeading : AppTheme.lightTextPrimary,
             ),
           ),
         ],
@@ -177,7 +178,7 @@ class StatusChip extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: GoogleFonts.plusJakartaSans(
+            style: GoogleFonts.instrumentSans(
               color: AppTheme.fg,
               fontSize: 11,
             ),
@@ -432,6 +433,10 @@ class LiveKpiCard extends StatefulWidget {
     this.deltaLabel = 'vs prev',
     this.showLiveBadge = true,
     this.isRefreshing = false,
+    this.accentValue = false,
+    this.valueColor,
+    this.topBorderColor,
+    this.footnote,
   });
 
   final String label;
@@ -443,6 +448,23 @@ class LiveKpiCard extends StatefulWidget {
   final String deltaLabel;
   final bool showLiveBadge;
   final bool isRefreshing;
+
+  /// Color the big value with the signature accent. Use sparingly — for the
+  /// one metric that's the actual point of a KPI group — not on every card,
+  /// or nothing reads as emphasized.
+  final bool accentValue;
+
+  /// Explicit value color, e.g. for status-driven coloring (budget
+  /// warn/danger). Takes precedence over [accentValue].
+  final Color? valueColor;
+
+  /// Explicit top-edge accent color. Defaults to the signature accent when
+  /// [accentValue] is set, otherwise none.
+  final Color? topBorderColor;
+
+  /// Static caption shown below the value, independent of [prevValue] — for
+  /// context that isn't a period-over-period comparison (e.g. "of $50 budget").
+  final String? footnote;
 
   @override
   State<LiveKpiCard> createState() => _LiveKpiCardState();
@@ -481,6 +503,14 @@ class _LiveKpiCardState extends State<LiveKpiCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final valueColor =
+        widget.valueColor ??
+        (widget.accentValue
+            ? AppTheme.accent
+            : (isDark ? AppTheme.textHeading : AppTheme.lightTextPrimary));
+    final topBorderColor =
+        widget.topBorderColor ?? (widget.accentValue ? AppTheme.accent : null);
     final delta = widget.prevValue != null
         ? fmtDelta(widget.value, widget.prevValue!)
         : null;
@@ -492,12 +522,14 @@ class _LiveKpiCardState extends State<LiveKpiCard> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: AppTheme.accent.withValues(alpha: 0.55),
-            width: 2,
-          ),
-        ),
+        border: topBorderColor == null
+            ? null
+            : Border(
+                top: BorderSide(
+                  color: topBorderColor.withValues(alpha: 0.55),
+                  width: 2,
+                ),
+              ),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: AppTheme.glassPanel(
@@ -511,7 +543,7 @@ class _LiveKpiCardState extends State<LiveKpiCard> {
                 Expanded(
                   child: Text(
                     widget.label.toUpperCase(),
-                    style: GoogleFonts.plusJakartaSans(
+                    style: GoogleFonts.instrumentSans(
                       color: AppTheme.muted,
                       fontSize: 10,
                       letterSpacing: 0.5,
@@ -542,7 +574,7 @@ class _LiveKpiCardState extends State<LiveKpiCard> {
                         const SizedBox(width: 4),
                         Text(
                           'LIVE',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: GoogleFonts.instrumentSans(
                             fontSize: 8,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.accent,
@@ -567,7 +599,7 @@ class _LiveKpiCardState extends State<LiveKpiCard> {
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.accent,
+                    color: valueColor,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 );
@@ -596,6 +628,13 @@ class _LiveKpiCardState extends State<LiveKpiCard> {
                     style: TextStyle(color: AppTheme.muted, fontSize: 8),
                   ),
                 ],
+              ),
+            ],
+            if (delta == null && widget.footnote != null) ...[
+              const SizedBox(height: 3),
+              Text(
+                widget.footnote!,
+                style: const TextStyle(color: AppTheme.muted, fontSize: 10),
               ),
             ],
           ],

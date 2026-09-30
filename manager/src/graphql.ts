@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createSchema, createYoga } from 'graphql-yoga'
-import { NoSchemaIntrospectionCustomRule } from 'graphql'
+import { GraphQLError, NoSchemaIntrospectionCustomRule, type ValidationRule } from 'graphql'
 import { config } from './config.js'
 import {
   getAgent,
@@ -145,6 +145,102 @@ const typeDefs = /* GraphQL */ `
     byModel: [LlmModelStats!]!
     retryTrend: [TrendPoint!]!
     topRetryTasks: [TopRetryTask!]!
+    availableTools: [String!]!
+    availableModels: [String!]!
+    availableAgents: [AvailableAgent!]!
+    byAgent: [AgentSummary!]!
+    byRepo: [RepoStat!]!
+    durationDistribution: [DurationBucket!]!
+    dailyCompletionRate: [DailyCompletion!]!
+    hourlyActivity: [HourlyActivity!]!
+    byModelRetryRate: [ModelRetryRate!]!
+    agentHealth: [AgentHealth!]!
+    estimatedCostUsd: Float!
+    prevEstimatedCostUsd: Float!
+    prevTaskCount: Int!
+    prevTotalRetries: Int!
+    prevActiveCount: Int!
+    prevCompletedCount: Int!
+    prevAbandonedCount: Int!
+    prevInputTokens: Int!
+    prevOutputTokens: Int!
+    prevAvgRetries: Float!
+    prevRetryRate: Float!
+    prevAgentCount: Int!
+    prevAvgSessionMinutes: Float!
+    budgetUsd: Float
+    budgetUsedFraction: Float
+    periodComparisons: [PeriodComparison!]!
+  }
+
+  type PeriodTotals {
+    taskCount: Int!
+    totalRetries: Int!
+    retryRate: Float!
+    estimatedCostUsd: Float!
+  }
+
+  type PeriodComparison {
+    label: String!
+    current: PeriodTotals!
+    previous: PeriodTotals!
+  }
+
+  type AvailableAgent {
+    id: ID!
+    name: String!
+  }
+
+  type AgentSummary {
+    agentId: ID!
+    agentName: String!
+    taskCount: Int!
+    retryCount: Int!
+    inputTokens: Int!
+    outputTokens: Int!
+    avgDurationSec: Float!
+  }
+
+  type RepoStat {
+    repoName: String!
+    taskCount: Int!
+    retryCount: Int!
+    completedCount: Int!
+    totalCount: Int!
+    completionRate: Float!
+  }
+
+  type DurationBucket {
+    bucket: String!
+    count: Int!
+  }
+
+  type DailyCompletion {
+    day: String!
+    completed: Int!
+    abandoned: Int!
+    total: Int!
+  }
+
+  type HourlyActivity {
+    hour: Int!
+    count: Int!
+  }
+
+  type ModelRetryRate {
+    model: String!
+    totalTasks: Int!
+    totalRetries: Int!
+    retryRate: Float!
+  }
+
+  type AgentHealth {
+    agentId: ID!
+    agentName: String!
+    lastHeartbeatAt: DateTime
+    stale: Boolean!
+    totalSessions: Int!
+    activeTasks: Int!
   }
 
   type ToolCount {
@@ -434,6 +530,28 @@ const resolvers = {
   },
 }
 
+/** Cap the total number of selected fields in a single GraphQL document.
+ *  Without this, a client can bypass the 20 req/min rate limit's intent by
+ *  aliasing the same expensive field hundreds of times in one request
+ *  (e.g. `a: tasks(size: 200) { ... } b: tasks(size: 200) { ... } ...`). */
+const MAX_QUERY_FIELDS = 750
+
+function createFieldCountRule(): ValidationRule {
+  return (context) => {
+    let count = 0
+    return {
+      Field() {
+        count += 1
+        if (count > MAX_QUERY_FIELDS) {
+          context.reportError(
+            new GraphQLError(`Query exceeds maximum allowed field count (${MAX_QUERY_FIELDS})`),
+          )
+        }
+      },
+    }
+  }
+}
+
 export function createGraphqlYoga() {
   const schema = createSchema({ typeDefs, resolvers })
   return createYoga({
@@ -444,15 +562,14 @@ export function createGraphqlYoga() {
     graphqlEndpoint: '/graphql',
     landingPage: config.graphqlDev,
     graphiql: config.graphqlDev,
-    plugins: config.graphqlDev
-      ? []
-      : ([
-          {
-            onValidate({ addValidationRule }: { addValidationRule: (rule: typeof NoSchemaIntrospectionCustomRule) => void }) {
-              addValidationRule(NoSchemaIntrospectionCustomRule)
-            },
-          },
-        ] as never[]),
+    plugins: [
+      {
+        onValidate({ addValidationRule }: { addValidationRule: (rule: ValidationRule) => void }) {
+          addValidationRule(createFieldCountRule())
+          if (!config.graphqlDev) addValidationRule(NoSchemaIntrospectionCustomRule)
+        },
+      },
+    ] as never[],
   })
 }
 

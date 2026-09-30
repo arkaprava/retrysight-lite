@@ -65,8 +65,13 @@ class AppConfigNotifier extends StateNotifier<AsyncValue<AppConfig>> {
       if (synced.adminToken != current.adminToken) {
         state = AsyncValue.data(synced);
       }
-    } catch (_) {
-      // Non-fatal — user can paste token manually in Settings.
+    } catch (e) {
+      // Non-fatal — user can paste token manually in Settings. `save()`
+      // itself already tolerates a Keychain-write failure (see its comment),
+      // so reaching this catch means something else went wrong (e.g. the
+      // admin-token file couldn't be read); surface it for diagnosis.
+      // ignore: avoid_print
+      print('[retrysight-lite] syncAdminTokenFromBackend failed: $e');
     }
   }
 }

@@ -241,18 +241,22 @@ export function cleanupOldData(days: number): { deletedTasks: number; deletedEve
   if (days <= 0) return { deletedTasks: 0, deletedEvents: 0 }
   const database = getDb()
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString()
-  // Delete events for tasks older than cutoff
+  // Delete events for tasks older than cutoff — but never a still-ACTIVE task:
+  // an old `created_at` doesn't mean abandoned, just long-running, and deleting
+  // it out from under the agent still reporting to it would corrupt its state.
   const deletedEvents = Number(
     database
       .prepare(
-        `DELETE FROM task_events WHERE task_id IN (SELECT id FROM tasks WHERE created_at < ?)`,
+        `DELETE FROM task_events WHERE task_id IN (
+           SELECT id FROM tasks WHERE created_at < ? AND status != 'ACTIVE'
+         )`,
       )
       .run(cutoff).changes,
   )
-  // Delete tasks older than cutoff
+  // Delete tasks older than cutoff, excluding ACTIVE ones (see above)
   const deletedTasks = Number(
     database
-      .prepare('DELETE FROM tasks WHERE created_at < ?')
+      .prepare(`DELETE FROM tasks WHERE created_at < ? AND status != 'ACTIVE'`)
       .run(cutoff).changes,
   )
   if (deletedTasks > 0 || deletedEvents > 0) {
@@ -261,6 +265,26 @@ export function cleanupOldData(days: number): { deletedTasks: number; deletedEve
     )
   }
   return { deletedTasks, deletedEvents }
+}
+
+/** Generic key/value settings row, shared by collector configs, the cost
+ *  budget, and any future admin-configurable value that shouldn't require an
+ *  env var + restart. */
+export function getSetting(key: string): string | null {
+  const row = getDb()
+    .prepare('SELECT value FROM settings WHERE key = ?')
+    .get(key) as { value: string } | undefined
+  return row?.value ?? null
+}
+
+export function setSetting(key: string, value: string): void {
+  getDb()
+    .prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+    .run(key, value)
+}
+
+export function deleteSetting(key: string): void {
+  getDb().prepare('DELETE FROM settings WHERE key = ?').run(key)
 }
 
 export function generateRawKey(): string {

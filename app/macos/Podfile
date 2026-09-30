@@ -1,4 +1,4 @@
-platform :osx, '10.15'
+platform :osx, '12.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -38,5 +38,12 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+    # Some pods (e.g. flutter_secure_storage_macos) ship a podspec with a lower
+    # deployment target (10.14) than this Xcode's supported floor (12.0 on
+    # Xcode 27), which fails the build with a hard error. Force every pod
+    # target up to the Podfile's platform version.
+    target.build_configurations.each do |config|
+      config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '12.0'
+    end
   end
 end

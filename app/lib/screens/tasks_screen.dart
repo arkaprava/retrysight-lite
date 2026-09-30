@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/dashboard.dart';
 import '../models/task.dart';
 import '../providers/app_providers.dart';
+import '../services/platform_file_ops.dart';
 import '../theme/app_theme.dart';
 import '../widgets/charts/session_waterfall.dart';
 import '../widgets/common_widgets.dart';
@@ -22,6 +24,34 @@ class TasksScreen extends ConsumerWidget {
   final VoidCallback? onClearTask;
 
   static const _pageSize = 80;
+
+  Future<void> _exportCsv(
+    BuildContext context,
+    WidgetRef ref,
+    DashboardFilters filters,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final api = ref.read(apiServiceProvider);
+      final csv = await api.exportTasksCsv(filters: filters);
+      final fileName =
+          'retrysight-tasks-${DateTime.now().millisecondsSinceEpoch}.csv';
+      final saved = await saveCsvExport(csv, fileName);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Exported to $saved'),
+          backgroundColor: AppTheme.base2,
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Export failed: $e'),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -57,15 +87,15 @@ class TasksScreen extends ConsumerWidget {
 
         return Column(
           children: [
-            if (response.totalCount > _pageSize)
-              Container(
-                height: 32,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: AppTheme.border)),
-                ),
-                child: Row(
-                  children: [
+            Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppTheme.border)),
+              ),
+              child: Row(
+                children: [
+                  if (response.totalCount > _pageSize)
                     Text(
                       'Page ${currentPage + 1} of $totalPages · ${response.totalCount} tasks',
                       style: const TextStyle(
@@ -73,7 +103,17 @@ class TasksScreen extends ConsumerWidget {
                         fontSize: 11,
                       ),
                     ),
-                    const Spacer(),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => _exportCsv(context, ref, filters),
+                    icon: const Icon(Icons.download_outlined, size: 15),
+                    label: const Text('Export CSV'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.muted,
+                      textStyle: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+                  if (response.totalCount > _pageSize) ...[
                     IconButton(
                       icon: const Icon(Icons.chevron_left, size: 18),
                       onPressed: currentPage > 0
@@ -95,8 +135,9 @@ class TasksScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
+            ),
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 4),

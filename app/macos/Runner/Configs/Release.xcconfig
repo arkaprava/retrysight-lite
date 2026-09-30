@@ -1,2 +1,14 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Build arm64-only for local Release packaging. The system `lipo -verify_arch`
+// on this machine's Xcode/CLT (27.0 / build 25G83) fails with "requires
+// exactly one input file" whenever given 2+ architectures — reproduced even
+// against stock system libraries, so it's a host toolchain bug, not a project
+// issue. Flutter's macOS release build always verifies the FlutterMacOS
+// framework against the full $(ARCHS_STANDARD) list ("arm64 x86_64"), which
+// trips this bug and aborts packaging. Restricting to arm64 (this Mac's
+// native arch) avoids the multi-arch verify call. Remove once Apple ships a
+// fixed `lipo`, or drop ARCHS to build a universal binary on unaffected hosts.
+ARCHS = arm64
+ONLY_ACTIVE_ARCH = NO

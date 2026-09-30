@@ -14,16 +14,29 @@ const MAX_ARRAY = 100
 const MAX_STR = 2048
 const MAX_PAYLOAD_JSON = 32_768
 
-/** Strip HTML tags and common XSS vectors from a string to prevent stored XSS. */
+/** Strip HTML tags, javascript: URIs, and on-event attributes from a string.
+ *  This is a best-effort defense-in-depth measure — it is NOT a defense against
+ *  prompt injection. Ingested text (task titles, branch names, event notes, …)
+ *  is later surfaced verbatim to LLM agents via the MCP tools in mcp-stdio.ts,
+ *  so it must always be treated as untrusted data by consumers of that API,
+ *  regardless of this sanitization. */
+function sanitizeString(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, '')
+    .replace(/javascript\s*:/gi, 'blocked:')
+    .replace(/on\w+\s*=/gi, 'blocked=')
+}
+
+/** Sanitize a scalar free-text field (title, branch name, etc.). Passes through non-strings unchanged. */
+function sanitizeText<T extends string | null | undefined>(value: T): T {
+  return (typeof value === 'string' ? sanitizeString(value) : value) as T
+}
+
 function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(payload)) {
     if (typeof value === 'string') {
-      // Remove HTML tags, javascript: URIs, on-event attributes
-      result[key] = value
-        .replace(/<[^>]*>/g, '')
-        .replace(/javascript\s*:/gi, 'blocked:')
-        .replace(/on\w+\s*=/gi, 'blocked=')
+      result[key] = sanitizeString(value)
     } else if (value !== null && typeof value === 'object') {
       result[key] = sanitizePayload(value as Record<string, unknown>)
     } else {
@@ -34,6 +47,11 @@ function sanitizePayload(payload: Record<string, unknown>): Record<string, unkno
 }
 
 const limitedString = (max = MAX_STR) => z.string().max(max)
+/** Loose email-shape check (accepts the app's own `user@local` self-heartbeat
+ *  identities, which have no TLD and would fail zod's strict `.email()`) while
+ *  still rejecting empty/whitespace/multi-@ garbage. */
+const emailLike = (max = 320) =>
+  z.string().max(max).regex(/^[^\s@]+@[^\s@]+$/, 'Invalid email address')
 
 const projectContextSchema = z
   .object({
@@ -48,7 +66,7 @@ const projectContextSchema = z
 
 export const heartbeatSchema = z.object({
   name: limitedString(256).min(1),
-  developerEmail: z.string().email().or(limitedString(320).min(1)),
+  developerEmail: emailLike(320),
   hostname: limitedString(256).min(1),
   osUsername: limitedString(256).optional().nullable(),
   displayName: limitedString(256).optional().nullable(),
@@ -146,10 +164,21 @@ export function registerOrResolveAgent(
     if (existing) {
       // Prevent agent-ID spoofing: if the agent was registered by a specific key,
       // the current request must use the same key.
-      if (existing.registered_by_key_hash && registeredByKeyHash && registeredByKeyHash !== existing.registered_by_key_hash) {
-        const err = new Error('Agent belongs to a different API key')
-        ;(err as Error & { statusCode: number }).statusCode = 403
-        throw err
+      if (existing.registered_by_key_hash) {
+        if (registeredByKeyHash && registeredByKeyHash !== existing.registered_by_key_hash) {
+          const err = new Error('Agent belongs to a different API key')
+          ;(err as Error & { statusCode: number }).statusCode = 403
+          throw err
+        }
+      } else if (registeredByKeyHash) {
+        // Legacy/pre-migration agent with no key on record: the first caller to
+        // present a key from here on claims and locks the agent to that key,
+        // closing the window where any valid agent key could adopt it.
+        db.prepare('UPDATE agents SET registered_by_key_hash = ? WHERE id = ?').run(
+          registeredByKeyHash,
+          agentId,
+        )
+        existing.registered_by_key_hash = registeredByKeyHash
       }
       if (heartbeat) {
         db.prepare(
@@ -159,12 +188,12 @@ export function registerOrResolveAgent(
             installed_collectors = ?, last_heartbeat_at = ?
            WHERE id = ?`,
         ).run(
-          heartbeat.name,
+          sanitizeText(heartbeat.name),
           heartbeat.developerEmail,
-          heartbeat.hostname,
-          heartbeat.osUsername ?? null,
-          heartbeat.displayName ?? null,
-          heartbeat.gitEmail ?? null,
+          sanitizeText(heartbeat.hostname),
+          sanitizeText(heartbeat.osUsername) ?? null,
+          sanitizeText(heartbeat.displayName) ?? null,
+          sanitizeText(heartbeat.gitEmail) ?? null,
           heartbeat.installedCollectors?.join(',') ?? existing.installed_collectors,
           ts,
           agentId,
@@ -190,12 +219,12 @@ export function registerOrResolveAgent(
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
-    heartbeat.name,
+    sanitizeText(heartbeat.name),
     heartbeat.developerEmail,
-    heartbeat.osUsername ?? null,
-    heartbeat.displayName ?? null,
-    heartbeat.gitEmail ?? null,
-    heartbeat.hostname,
+    sanitizeText(heartbeat.osUsername) ?? null,
+    sanitizeText(heartbeat.displayName) ?? null,
+    sanitizeText(heartbeat.gitEmail) ?? null,
+    sanitizeText(heartbeat.hostname),
     ts,
     heartbeat.installedCollectors?.join(',') ?? null,
     registeredByKeyHash ?? null,
@@ -236,13 +265,13 @@ export function processBatch(agentId: string, body: BatchRequest) {
       start.taskId,
       agentId,
       start.sourceTool,
-      start.title ?? null,
+      sanitizeText(start.title) ?? null,
       start.startedAt ?? ts,
-      start.projectContext?.projectRoot ?? null,
-      start.projectContext?.repoName ?? null,
-      start.projectContext?.gitBranch ?? null,
-      start.projectContext?.gitCommit ?? null,
-      start.projectContext?.remoteUrl ?? null,
+      sanitizeText(start.projectContext?.projectRoot) ?? null,
+      sanitizeText(start.projectContext?.repoName) ?? null,
+      sanitizeText(start.projectContext?.gitBranch) ?? null,
+      sanitizeText(start.projectContext?.gitCommit) ?? null,
+      sanitizeText(start.projectContext?.remoteUrl) ?? null,
       ts,
       ts,
     )
@@ -297,7 +326,7 @@ export function processBatch(agentId: string, body: BatchRequest) {
         ts,
       )
       eventsAccepted += 1
-      if (['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION'].includes(item.eventType)) {
+      if (['EDIT', 'TEST_FAIL', 'DIFF_REJECTED', 'COMPACTION', 'COMMAND_FAILED'].includes(item.eventType)) {
         bumpRetry.run(ts, item.taskId, agentId)
       }
     } else if (item.type === 'TOKEN_USAGE') {
@@ -351,7 +380,7 @@ export function getAgent(id: string): AgentRow | undefined {
   return getDb().prepare('SELECT * FROM agents WHERE id = ?').get(id) as AgentRow | undefined
 }
 
-export function listTasks(filters: {
+export type TaskFilters = {
   agentId?: string
   sourceTool?: string
   from?: string
@@ -359,7 +388,9 @@ export function listTasks(filters: {
   minRetries?: number
   page?: number
   size?: number
-}): { items: TaskRow[]; totalCount: number } {
+}
+
+function buildTaskFilterClause(filters: TaskFilters): { where: string; params: Array<string | number> } {
   const clauses: string[] = []
   const params: Array<string | number> = []
   if (filters.agentId) {
@@ -382,7 +413,23 @@ export function listTasks(filters: {
     clauses.push('retry_count >= ?')
     params.push(filters.minRetries)
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params }
+}
+
+/** Bound export size so a very large local DB can't produce an unbounded
+ *  response — this is a local, admin-only export, not a paginated API, but
+ *  still shouldn't be able to try to serialize millions of rows in one go. */
+const MAX_EXPORT_ROWS = 50_000
+
+export function listTasksForExport(filters: TaskFilters): TaskRow[] {
+  const { where, params } = buildTaskFilterClause(filters)
+  return getDb()
+    .prepare(`SELECT * FROM tasks ${where} ORDER BY started_at DESC LIMIT ?`)
+    .all(...params, MAX_EXPORT_ROWS) as TaskRow[]
+}
+
+export function listTasks(filters: TaskFilters): { items: TaskRow[]; totalCount: number } {
+  const { where, params } = buildTaskFilterClause(filters)
   const totalCount = (
     getDb().prepare(`SELECT COUNT(*) AS c FROM tasks ${where}`).get(...params) as { c: number }
   ).c

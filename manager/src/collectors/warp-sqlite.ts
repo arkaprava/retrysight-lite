@@ -146,7 +146,13 @@ export class WarpSqliteCollector {
         //   - warp_tokens: Warp-hosted models (Claude, GPT, etc.)
         //   - custom_endpoint_tokens: custom endpoints (DeepSeek, etc.)
         //   - byok_tokens: bring-your-own-key
-        // Sum all fields to get the total, then estimate a 40/60 input/output split
+        // Sum all fields to get the total. There is no real input/output split
+        // anywhere in this schema — verified against a live local Warp DB:
+        // `token_usage` entries only ever break totals down by *category*
+        // (e.g. "full_terminal_use", "tool_summarization"), never by
+        // direction. The 40/60 split below is therefore an unavoidable
+        // estimate, not a real number — cost totals derived from it
+        // (estimatedCostUsd) should be read as approximate for Warp specifically.
         const totalTokens = (tu.warp_tokens ?? 0) + (tu.byok_tokens ?? 0) + (tu.custom_endpoint_tokens ?? 0)
         const estimatedInput = Math.ceil(totalTokens * 0.4)
         const estimatedOutput = totalTokens - estimatedInput
@@ -231,7 +237,16 @@ export class WarpSqliteCollector {
     const occurredAt = row.start_ts || row.completed_ts || new Date().toISOString()
     const subagentTaskId = meta.subagent_task_id as string | null
 
-    const eventType = subagentTaskId ? 'SUBAGENT' : 'EDIT'
+    // A non-zero exit code means the AI-run terminal command actually failed —
+    // a real, direct retry-adjacent signal (verified against a live local
+    // Warp DB: ~15% of AI-driven command blocks have non-zero exit codes).
+    // This previously fell through to plain 'EDIT', so Warp's most common
+    // failure mode never counted toward retry_count at all.
+    const eventType = subagentTaskId
+      ? 'SUBAGENT'
+      : row.exit_code !== 0
+        ? 'COMMAND_FAILED'
+        : 'EDIT'
     this.buffer.offerItem({
       type: 'EVENT',
       taskId,

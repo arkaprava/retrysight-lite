@@ -450,6 +450,9 @@ class AgenticDashboard {
     required this.prevAvgSessionMinutes,
     required this.estimatedCostUsd,
     required this.prevEstimatedCostUsd,
+    this.budgetUsd,
+    this.budgetUsedFraction,
+    this.periodComparisons = const [],
   });
 
   final int taskCount;
@@ -497,6 +500,16 @@ class AgenticDashboard {
   final double prevAvgSessionMinutes;
   final double estimatedCostUsd;
   final double prevEstimatedCostUsd;
+
+  /// Configured spend ceiling for the period, if the user has set one.
+  final double? budgetUsd;
+
+  /// `estimatedCostUsd / budgetUsd`, or null when no budget is configured.
+  final double? budgetUsedFraction;
+
+  /// Fixed week-over-week and month-over-month comparisons, independent of
+  /// whichever date range is currently selected.
+  final List<PeriodComparison> periodComparisons;
 
   factory AgenticDashboard.fromJson(Map<String, dynamic> json) {
     return AgenticDashboard(
@@ -578,6 +591,58 @@ class AgenticDashboard {
       estimatedCostUsd: (json['estimatedCostUsd'] as num?)?.toDouble() ?? 0,
       prevEstimatedCostUsd:
           (json['prevEstimatedCostUsd'] as num?)?.toDouble() ?? 0,
+      budgetUsd: (json['budgetUsd'] as num?)?.toDouble(),
+      budgetUsedFraction: (json['budgetUsedFraction'] as num?)?.toDouble(),
+      periodComparisons: (json['periodComparisons'] as List<dynamic>? ?? [])
+          .map((e) => PeriodComparison.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class PeriodTotals {
+  const PeriodTotals({
+    required this.taskCount,
+    required this.totalRetries,
+    required this.retryRate,
+    required this.estimatedCostUsd,
+  });
+
+  final int taskCount;
+  final int totalRetries;
+  final double retryRate;
+  final double estimatedCostUsd;
+
+  factory PeriodTotals.fromJson(Map<String, dynamic> json) {
+    return PeriodTotals(
+      taskCount: json['taskCount'] as int? ?? 0,
+      totalRetries: json['totalRetries'] as int? ?? 0,
+      retryRate: (json['retryRate'] as num?)?.toDouble() ?? 0,
+      estimatedCostUsd: (json['estimatedCostUsd'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+class PeriodComparison {
+  const PeriodComparison({
+    required this.label,
+    required this.current,
+    required this.previous,
+  });
+
+  final String label;
+  final PeriodTotals current;
+  final PeriodTotals previous;
+
+  factory PeriodComparison.fromJson(Map<String, dynamic> json) {
+    return PeriodComparison(
+      label: json['label'] as String? ?? '',
+      current: PeriodTotals.fromJson(
+        json['current'] as Map<String, dynamic>? ?? const {},
+      ),
+      previous: PeriodTotals.fromJson(
+        json['previous'] as Map<String, dynamic>? ?? const {},
+      ),
     );
   }
 }

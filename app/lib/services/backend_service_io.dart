@@ -86,6 +86,16 @@ class BackendService {
       dataDir: config.dataDir,
       managerPath: managerDir,
     );
+    // Process.start requires `workingDirectory` to already exist — on a brand
+    // new install (no prior `install-macos.sh`/manager run) neither this dir
+    // nor the data dir under it exist yet, so the spawn would otherwise fail
+    // silently (caught below into `_lastError`) on every first launch.
+    try {
+      Directory(workingDir).createSync(recursive: true);
+    } catch (_) {
+      // Best effort — if this truly can't be created, Process.start below
+      // will fail with a clearer, surfaced error.
+    }
 
     try {
       if (bundledBinary != null) {

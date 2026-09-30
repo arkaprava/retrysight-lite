@@ -101,6 +101,20 @@ class ApiService {
     return TaskListResponse.fromJson(json);
   }
 
+  /// Fetches all matching tasks (ignoring pagination) as CSV text.
+  Future<String> exportTasksCsv({DashboardFilters? filters}) async {
+    final response = await http
+        .get(
+          _uri('/api/v1/tasks/export.csv', filters?.toQueryParams()),
+          headers: _authHeaders,
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode >= 400) {
+      throw ApiException(response.body, statusCode: response.statusCode);
+    }
+    return response.body;
+  }
+
   Future<TaskDetail> task(String id) async {
     final encodedId = Uri.encodeComponent(id);
     final json = await _getJson('/api/v1/tasks/$encodedId');
@@ -150,6 +164,26 @@ class ApiService {
           _uri('/api/v1/collectors/config'),
           headers: {..._authHeaders, 'Content-Type': 'application/json'},
           body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode >= 400) {
+      throw ApiException(response.body, statusCode: response.statusCode);
+    }
+  }
+
+  /// Fetches the configured cost budget (USD), or null if unset.
+  Future<double?> getCostBudget() async {
+    final json = await _getJson('/api/v1/settings/budget');
+    return (json['budgetUsd'] as num?)?.toDouble();
+  }
+
+  /// Sets the cost budget (USD). Pass null to clear it.
+  Future<void> setCostBudget(double? budgetUsd) async {
+    final response = await http
+        .put(
+          _uri('/api/v1/settings/budget'),
+          headers: {..._authHeaders, 'Content-Type': 'application/json'},
+          body: jsonEncode({'budgetUsd': budgetUsd}),
         )
         .timeout(const Duration(seconds: 10));
     if (response.statusCode >= 400) {

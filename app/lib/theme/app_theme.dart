@@ -3,71 +3,76 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Rocket Monitor theme — aligned with agent-retry-platform manager dashboard.
+/// Ember theme — warm, high-contrast dark base with a signature amber accent.
+/// Chosen because this app is fundamentally about *retries*: amber reads as
+/// attention/caution, which fits the subject better than a generic
+/// cyan-on-navy "AI dashboard" palette.
 class AppTheme {
-  // ─── Monitor dark (Rocket Monitor) ───
-  static const bgApp = Color(0xFF0B0F19);
-  static const bgSecondary = Color(0x0AFFFFFF); // rgba(255,255,255,0.04)
-  static const bgTertiary = Color(0x0FFFFFFF);
-  static const bgInset = Color(0x52000000);
-  static const textPrimary = Color(0xFFE8ECF4);
-  static const textSecondary = Color(0xFF94A3B8);
-  static const textMuted = Color(0xFF64748B);
-  static const textHeading = Color(0xFFF8FAFC);
+  // ─── Ember dark ───
+  static const bgApp = Color(0xFF0C0A10);
+  static const bgSecondary = Color(0x0BFFFFFF); // rgba(255,255,255,0.045)
+  static const bgTertiary = Color(0x12FFFFFF);
+  static const bgInset = Color(0x59000000);
+  static const textPrimary = Color(0xFFF3EEE6);
+  static const textSecondary = Color(0xFFA79FB0);
+  static const textMuted = Color(0xFF6F6779);
+  static const textHeading = Color(0xFFFBF7F0);
 
-  static const accent = Color(0xFF5BCFF0);
-  static const accentSecondary = Color(0xFFA78BFA);
-  static const accentMuted = Color(0xFF8BDBF0);
-  static const accentSubtle = Color(0x1F5BCFF0); // 12%
-  static const accentGlow = Color(0x595BCFF0);
+  static const accent = Color(0xFFE7A23A);
+  static const accentSecondary = Color(0xFF33C7B0); // teal
+  static const accentMuted = Color(0xFFF2BD6D);
+  static const accentSubtle = Color(0x24E7A23A); // 14%
+  static const accentGlow = Color(0x59E7A23A);
 
-  static const borderGlass = Color(0x0FFFFFFF);
-  static const borderHover = Color(0x475BCFF0);
-  static const navActiveBorder = Color(0x595BCFF0);
+  static const borderGlass = Color(0x14FFFFFF);
+  static const borderHover = Color(0x59E7A23A);
+  static const navActiveBorder = Color(0x59E7A23A);
 
-  static const success = Color(0xFF34D399);
-  static const info = Color(0xFF38BDF8);
-  static const warn = Color(0xFFFBBF24);
-  static const danger = Color(0xFFF87171);
+  static const success = Color(0xFF4CC38A);
+  static const info = Color(0xFF5EB3E4);
+  static const warn = Color(0xFFF2954A);
+  static const danger = Color(0xFFEE6B64);
 
-  static const chart1 = Color(0xFF5BCFF0);
-  static const chart2 = Color(0xFFA78BFA);
-  static const chart3 = Color(0xFF34D399);
-  static const chart4 = Color(0xFFFBBF24);
-  static const chart5 = Color(0xFFF472B6);
-  static const chart6 = Color(0xFF38BDF8);
+  static const chart1 = Color(0xFFE7A23A); // amber (signature)
+  static const chart2 = Color(0xFF33C7B0); // teal
+  static const chart3 = Color(0xFFE88CA6); // rose
+  static const chart4 = Color(0xFF9C8CF2); // violet
+  static const chart5 = Color(0xFFF2954A); // orange
+  static const chart6 = Color(0xFF5EB3E4); // blue
 
-  // ─── Monitor light ───
-  static const lightBgApp = Color(0xFFEEF2F8);
+  // ─── Ember light ───
+  static const lightBgApp = Color(0xFFF6F1E7);
   static const lightBgSecondary = Color(0xB8FFFFFF);
-  static const lightTextPrimary = Color(0xFF0F172A);
-  static const lightTextSecondary = Color(0xFF475569);
-  static const lightTextMuted = Color(0xFF64748B);
-  static const lightAccent = Color(0xFF0E9EB0);
-  static const lightAccentSecondary = Color(0xFF7C3AED);
-  static const lightBorder = Color(0x140B0F19);
+  static const lightBgTertiary = Color(0x14140B08);
+  static const lightBgInset = Color(0x0A140B08);
+  static const lightTextPrimary = Color(0xFF211A12);
+  static const lightTextSecondary = Color(0xFF6B6155);
+  static const lightTextMuted = Color(0xFF928778);
+  static const lightAccent = Color(0xFFB5761F);
+  static const lightAccentSecondary = Color(0xFF0E8C79); // teal
+  static const lightBorder = Color(0x1A140B08);
 
   // ─── Legacy aliases (used across widgets) ───
   static const base3 = bgApp;
-  static const base2 = Color(0xFF141A28);
+  static const base2 = Color(0xFF16131C);
   static const base1 = textMuted;
   static const base0 = textSecondary;
   static const base00 = textPrimary;
   static const base01 = textHeading;
-  static const base02 = Color(0xFF1A2235);
+  static const base02 = Color(0xFF1C1824);
   static const base03 = bgApp;
   static const fg = textPrimary;
   static const muted = textMuted;
-  static const hover = accentSecondary;
+  static const hover = chart3;
   static const border = borderGlass;
   static const green = success;
-  static const cyan = accent;
-  static const blue = accent;
-  static const violet = accentSecondary;
-  static const orange = Color(0xFFFB923C);
+  static const cyan = info;
+  static const blue = info;
+  static const violet = chart4;
+  static const orange = warn;
   static const red = danger;
-  static const yellow = warn;
-  static const magenta = chart5;
+  static const yellow = accentMuted;
+  static const magenta = chart3;
 
   // ─── Layout tokens ───
   static const sidebarWidth = 220.0;
@@ -77,10 +82,10 @@ class AppTheme {
   static const blurSigma = 12.0;
 
   static TextStyle get sans =>
-      GoogleFonts.plusJakartaSans(color: fg, fontSize: 13);
+      GoogleFonts.instrumentSans(color: fg, fontSize: 13);
   static TextStyle get mono =>
       GoogleFonts.jetBrainsMono(color: fg, fontSize: 12);
-  static TextStyle get display => GoogleFonts.plusJakartaSans(
+  static TextStyle get display => GoogleFonts.bricolageGrotesque(
     color: textHeading,
     fontWeight: FontWeight.w700,
   );
@@ -103,80 +108,54 @@ class AppTheme {
     );
   }
 
+  /// A single ambient amber glow (top-right) plus a quieter teal counterpart
+  /// (bottom-left) — one deliberate source of warmth per corner rather than
+  /// several competing radial blobs, so the depth reads as intentional.
   static Widget meshBackground({
     required Widget child,
     Brightness brightness = Brightness.dark,
   }) {
     final isDark = brightness == Brightness.dark;
+    final primaryGlow = isDark ? accent : lightAccent;
+    final secondaryGlow = isDark ? accentSecondary : lightAccentSecondary;
     return Stack(
       fit: StackFit.expand,
       children: [
         Container(color: isDark ? bgApp : lightBgApp),
-        if (isDark) ...[
-          Positioned(
-            top: -120,
-            left: 0,
-            right: 0,
-            height: 400,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topCenter,
-                  radius: 1.2,
-                  colors: [accent.withValues(alpha: 0.14), Colors.transparent],
-                ),
+        Positioned(
+          top: -220,
+          right: -160,
+          width: 620,
+          height: 620,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  primaryGlow.withValues(alpha: isDark ? 0.18 : 0.14),
+                  Colors.transparent,
+                ],
               ),
             ),
           ),
-          Positioned(
-            top: -40,
-            right: -80,
-            width: 320,
-            height: 320,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  colors: [
-                    accentSecondary.withValues(alpha: 0.10),
-                    Colors.transparent,
-                  ],
-                ),
+        ),
+        Positioned(
+          bottom: -260,
+          left: -120,
+          width: 520,
+          height: 520,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  secondaryGlow.withValues(alpha: isDark ? 0.10 : 0.08),
+                  Colors.transparent,
+                ],
               ),
             ),
           ),
-          Positioned(
-            bottom: -60,
-            left: -40,
-            width: 280,
-            height: 280,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  colors: [accent.withValues(alpha: 0.06), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-        ] else ...[
-          Positioned(
-            top: -80,
-            left: 0,
-            right: 0,
-            height: 300,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topCenter,
-                  radius: 1.1,
-                  colors: [
-                    lightAccent.withValues(alpha: 0.12),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
         child,
       ],
     );
@@ -188,23 +167,37 @@ class AppTheme {
     Brightness brightness = Brightness.dark,
   }) {
     final isDark = brightness == Brightness.dark;
+    // A brighter top edge plus the ordinary border on the other three sides
+    // fakes a subtle inner highlight (Flutter has no inset box-shadow),
+    // paired with a taller, softer outer shadow for real elevation.
+    final edge = isDark ? borderGlass : lightBorder;
+    final topHighlight = isDark
+        ? Colors.white.withValues(alpha: 0.07)
+        : Colors.white.withValues(alpha: 0.9);
     return BoxDecoration(
       color: fill ?? (isDark ? bgSecondary : lightBgSecondary),
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: isDark ? borderGlass : lightBorder),
+      border: Border(
+        top: BorderSide(color: topHighlight),
+        left: BorderSide(color: edge),
+        right: BorderSide(color: edge),
+        bottom: BorderSide(color: edge),
+      ),
       boxShadow: isDark
           ? [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 32,
+                spreadRadius: -12,
+                offset: const Offset(0, 12),
               ),
             ]
           : [
               BoxShadow(
-                color: lightTextPrimary.withValues(alpha: 0.06),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
+                color: lightTextPrimary.withValues(alpha: 0.10),
+                blurRadius: 28,
+                spreadRadius: -14,
+                offset: const Offset(0, 10),
               ),
             ],
     );
@@ -278,29 +271,29 @@ class AppTheme {
       brightness: brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
-      fontFamily: GoogleFonts.plusJakartaSans().fontFamily,
+      fontFamily: GoogleFonts.instrumentSans().fontFamily,
       textTheme: baseText.copyWith(
-        bodyMedium: GoogleFonts.plusJakartaSans(
+        bodyMedium: GoogleFonts.instrumentSans(
           fontSize: 13,
           height: 1.5,
           color: primaryText,
         ),
-        bodySmall: GoogleFonts.plusJakartaSans(
+        bodySmall: GoogleFonts.instrumentSans(
           fontSize: 12,
           color: secondaryText,
         ),
-        titleLarge: GoogleFonts.plusJakartaSans(
+        titleLarge: GoogleFonts.bricolageGrotesque(
           fontSize: 18,
           fontWeight: FontWeight.w700,
           color: isDark ? textHeading : lightTextPrimary,
           letterSpacing: -0.3,
         ),
-        titleMedium: GoogleFonts.plusJakartaSans(
+        titleMedium: GoogleFonts.instrumentSans(
           fontSize: 14,
           fontWeight: FontWeight.w600,
           color: primaryText,
         ),
-        labelLarge: GoogleFonts.plusJakartaSans(
+        labelLarge: GoogleFonts.instrumentSans(
           fontSize: 13,
           fontWeight: FontWeight.w600,
           color: primaryText,
@@ -343,8 +336,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(radiusSm),
           borderSide: BorderSide(color: primaryAccent, width: 1),
         ),
-        labelStyle: GoogleFonts.plusJakartaSans(color: mutedText, fontSize: 12),
-        hintStyle: GoogleFonts.plusJakartaSans(color: mutedText, fontSize: 13),
+        labelStyle: GoogleFonts.instrumentSans(color: mutedText, fontSize: 12),
+        hintStyle: GoogleFonts.instrumentSans(color: mutedText, fontSize: 13),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -354,7 +347,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusSm),
           ),
-          textStyle: GoogleFonts.plusJakartaSans(
+          textStyle: GoogleFonts.instrumentSans(
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -369,7 +362,7 @@ class AppTheme {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(radiusSm),
               ),
-              textStyle: GoogleFonts.plusJakartaSans(
+              textStyle: GoogleFonts.instrumentSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
