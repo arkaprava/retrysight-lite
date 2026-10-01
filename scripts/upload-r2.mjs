@@ -2,25 +2,45 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { spawn } from 'node:child_process'
-import { createReadStream, statSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { createReadStream, readdirSync, statSync } from 'node:fs'
+import { join, dirname, relative, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const BUCKET = process.env.R2_BUCKET || 'download-retrysight'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const staging = join(root, 'release/cdn-staging')
 
-const UPLOADS = [
-  { key: 'install.sh', file: join(staging, 'install.sh'), contentType: 'text/plain; charset=utf-8' },
-  { key: 'install.ps1', file: join(staging, 'install.ps1'), contentType: 'text/plain; charset=utf-8' },
-  { key: 'lite/latest/manifest.json', file: join(staging, 'lite/latest/manifest.json'), contentType: 'application/json' },
-  { key: 'lite/latest/retrysight-lite-1.0.0-macos-arm64.dmg', file: join(staging, 'lite/latest/retrysight-lite-1.0.0-macos-arm64.dmg'), contentType: 'application/octet-stream' },
-  { key: 'lite/latest/retrysight-lite-1.0.0-linux-x64.tar.gz', file: join(staging, 'lite/latest/retrysight-lite-1.0.0-linux-x64.tar.gz'), contentType: 'application/octet-stream' },
-  { key: 'lite/latest/retrysight-lite-1.0.0-win-x64.zip', file: join(staging, 'lite/latest/retrysight-lite-1.0.0-win-x64.zip'), contentType: 'application/octet-stream' },
-  { key: 'lite/latest/retrysight-lite-app-macos-arm64.tar.gz', file: join(staging, 'lite/latest/retrysight-lite-app-macos-arm64.tar.gz'), contentType: 'application/octet-stream' },
-  { key: 'lite/latest/retrysight-lite-app-linux-x64.tar.gz', file: join(staging, 'lite/latest/retrysight-lite-app-linux-x64.tar.gz'), contentType: 'application/octet-stream' },
-  { key: 'lite/latest/retrysight-lite-app-win-x64.zip', file: join(staging, 'lite/latest/retrysight-lite-app-win-x64.zip'), contentType: 'application/octet-stream' },
-]
+const CONTENT_TYPES = {
+  '.sh': 'text/plain; charset=utf-8',
+  '.ps1': 'text/plain; charset=utf-8',
+  '.json': 'application/json',
+}
+
+function contentTypeFor(file) {
+  return CONTENT_TYPES[extname(file)] || 'application/octet-stream'
+}
+
+// Walk the staged tree rather than listing filenames by hand — the staged
+// files are version-named (e.g. retrysight-lite-1.1.0-*), so a hardcoded
+// list here silently drifted from release to release (this previously
+// pinned every filename to 1.0.0, which would have uploaded nothing for
+// any other version while reporting success for 0 real files).
+function walk(dir, out = []) {
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) walk(full, out)
+    else out.push(full)
+  }
+  return out
+}
+
+const UPLOADS = walk(staging)
+  .filter((file) => !file.endsWith('README.txt'))
+  .map((file) => ({
+    key: relative(staging, file).split(sep).join('/'),
+    file,
+    contentType: contentTypeFor(file),
+  }))
 
 function fmtBytes(n) {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`
