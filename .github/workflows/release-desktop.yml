@@ -1,6 +1,9 @@
 name: Release Desktop Apps
 
 on:
+  # Pushing a v* tag builds all platforms and publishes (R2 + GitHub Release).
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       target:
@@ -13,11 +16,17 @@ on:
           - linux-x64
           - win-x64
           - macos-arm64
+      deploy:
+        description: 'Also publish (R2 upload + GitHub Release). Requires target=all and a v* tag as the ref.'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-linux:
     if: >-
-      ${{ github.event.inputs.target == 'all' ||
+      ${{ github.event_name == 'push' ||
+          github.event.inputs.target == 'all' ||
           github.event.inputs.target == 'linux-x64' }}
     runs-on: ubuntu-latest
     steps:
@@ -52,7 +61,8 @@ jobs:
 
   build-windows:
     if: >-
-      ${{ github.event.inputs.target == 'all' ||
+      ${{ github.event_name == 'push' ||
+          github.event.inputs.target == 'all' ||
           github.event.inputs.target == 'win-x64' }}
     runs-on: windows-latest
     steps:
@@ -83,7 +93,8 @@ jobs:
 
   build-macos:
     if: >-
-      ${{ github.event.inputs.target == 'all' ||
+      ${{ github.event_name == 'push' ||
+          github.event.inputs.target == 'all' ||
           github.event.inputs.target == 'macos-arm64' }}
     runs-on: macos-latest
     steps:
@@ -111,3 +122,103 @@ jobs:
             release/retrysight-lite-app-macos-arm64.tar.gz
             release/manifest.json
             release/cdn-staging/**
+
+  publish:
+    needs: [build-linux, build-windows, build-macos]
+    if: >-
+      ${{ startsWith(github.ref, 'refs/tags/v') &&
+          (github.event_name == 'push' ||
+           (github.event.inputs.deploy == 'true' && github.event.inputs.target == 'all')) }}
+    runs-on: ubuntu-latest
+    # Create a "release" environment in repo settings and add required
+    # reviewers to gate the live CDN upload behind a manual approval.
+    environment: release
+    permissions:
+      contents: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WEBSITE_REPO_TOKEN: ${{ secrets.WEBSITE_REPO_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify tag matches package.json version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF" != "refs/tags/v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF does not match package.json version v$VERSION"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Require Cloudflare credentials
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN (R2 write) and CLOUDFLARE_ACCOUNT_ID repo secrets"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release/_artifacts
+
+      - name: Collect installers
+        run: |
+          find release/_artifacts -maxdepth 2 -type f \
+            \( -name 'retrysight-lite-*.dmg' -o -name 'retrysight-lite-*.tar.gz' -o -name 'retrysight-lite-*.zip' \) \
+            -exec cp {} release/ \;
+          for f in "retrysight-lite-$VERSION-macos-arm64.dmg" \
+                   "retrysight-lite-$VERSION-linux-x64.tar.gz" \
+                   "retrysight-lite-$VERSION-win-x64.zip"; do
+            test -f "release/$f" || { echo "::error::missing $f"; exit 1; }
+          done
+          ls -la release
+
+      - name: Generate combined manifest and CDN staging
+        run: npm run stage:cdn
+
+      - name: Upload to Cloudflare R2
+        run: node scripts/upload-r2.mjs
+
+      - name: Verify live manifest
+        run: |
+          LIVE=$(curl -fsSL https://app.retrysight.com/lite/latest/manifest.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+          echo "live version: $LIVE"
+          [ "$LIVE" = "$VERSION" ] || { echo "::error::live manifest is $LIVE, expected $VERSION"; exit 1; }
+
+      - name: Create GitHub Release
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; skipping"
+          else
+            gh release create "$GITHUB_REF_NAME" --title "RetrySight Lite $VERSION" --generate-notes \
+              "release/retrysight-lite-$VERSION-macos-arm64.dmg" \
+              "release/retrysight-lite-$VERSION-linux-x64.tar.gz" \
+              "release/retrysight-lite-$VERSION-win-x64.zip" \
+              release/manifest.json
+          fi
+
+      # Opens (never merges) a PR on the website repo. Needs a token with
+      # contents + pull-requests write on that repo; skipped if unset.
+      - name: Open website PR with new download links
+        if: ${{ env.WEBSITE_REPO_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_REPO_TOKEN }}
+        run: |
+          SITE_REPO="${{ github.repository_owner }}/retrysight-website"
+          gh repo clone "$SITE_REPO" site
+          cd site
+          git checkout -b "release/lite-v$VERSION"
+          node ../scripts/update-website-downloads.mjs src/data/site.ts "$VERSION"
+          if git diff --quiet; then echo "Website already up to date"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update Lite download links to v$VERSION"
+          git push origin "release/lite-v$VERSION"
+          gh pr create --repo "$SITE_REPO" --base main --head "release/lite-v$VERSION" \
+            --title "Update Lite download links to v$VERSION" \
+            --body "Automated by the release workflow after v$VERSION was published to app.retrysight.com. Review and merge to update the site."
