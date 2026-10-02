@@ -1,6 +1,6 @@
 {
   "name": "retrysight-lite",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": false,
   "description": "RetrySight Lite \u2014 standalone terminal console for coding-agent retries, tokens, and agentic metrics",
   "scripts": {
