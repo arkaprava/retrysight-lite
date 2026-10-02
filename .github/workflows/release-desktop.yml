@@ -184,11 +184,13 @@ jobs:
       - name: Upload to Cloudflare R2
         run: node scripts/upload-r2.mjs
 
-      - name: Verify live manifest
+      # Read back through the authenticated R2 API: the public hostname is
+      # behind Cloudflare bot protection and returns 403 to runner traffic.
+      - name: Verify uploaded manifest
         run: |
-          LIVE=$(curl -fsSL https://app.retrysight.com/lite/latest/manifest.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
-          echo "live version: $LIVE"
-          [ "$LIVE" = "$VERSION" ] || { echo "::error::live manifest is $LIVE, expected $VERSION"; exit 1; }
+          LIVE=$(npx --yes wrangler@4 r2 object get "download-retrysight/lite/latest/manifest.json" --remote --pipe | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+          echo "latest manifest version: $LIVE"
+          [ "$LIVE" = "$VERSION" ] || { echo "::error::latest manifest is $LIVE, expected $VERSION"; exit 1; }
 
       - name: Create GitHub Release
         run: |
