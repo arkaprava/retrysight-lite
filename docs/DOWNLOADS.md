@@ -83,6 +83,26 @@ npm run stage:cdn
 Add a `/downloads/` route on `retrysight.com` (Astro `public/` or CDN proxy).  
 Use `app.retrysight.com` as CNAME to the same bucket for a clean install URL.
 
+## Automated release (GitHub Actions)
+
+Pushing a `v*` tag runs `.github/workflows/release-desktop.yml`: it builds Linux, Windows and macOS, then a `publish` job collects the installers, regenerates the combined manifest, uploads `install.*` and `lite/` to the `download-retrysight` R2 bucket, verifies the live manifest version, and creates a GitHub Release.
+
+```bash
+# 1. bump version in package.json, manager/package.json, app/pubspec.yaml; merge to main
+# 2. tag and push
+git tag -a v1.2.0 -m "RetrySight Lite 1.2.0" && git push origin v1.2.0
+```
+
+One-time setup (repo → Settings → Secrets and variables → Actions):
+
+| Secret | Purpose |
+| ------ | ------- |
+| `CLOUDFLARE_API_TOKEN` | API token with R2 **Object Read & Write** on the bucket (required) |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id (required) |
+| `WEBSITE_REPO_TOKEN` | Optional: token with contents + pull-requests write on `retrysight-website`; the job then opens (never merges) a PR updating the download filenames |
+
+The `publish` job uses a `release` environment — add required reviewers to it (Settings → Environments) to gate the live upload behind a manual approval. Re-run manually for an existing tag with `gh workflow run release-desktop.yml --ref v1.2.0 -f target=all -f deploy=true`. The tag must equal the `package.json` version or the job fails before uploading.
+
 ## Release checklist
 
 1. Bump `version` in root `package.json`

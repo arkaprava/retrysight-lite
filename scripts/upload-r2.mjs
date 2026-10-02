@@ -34,8 +34,17 @@ function walk(dir, out = []) {
   return out
 }
 
+// write-cdn-staging.mjs also mirrors everything under top-level latest/ and
+// vX.Y.Z/ (matching DOWNLOADS.md's suggested layout), but nothing actually
+// points at those paths — the live manifest's baseUrl, install.sh's
+// RETRYSIGHT_INSTALL_BASE default, and retrysight-website's
+// liteArtifactBase all resolve to /lite/... only. Uploading the unused
+// root copies too would roughly double egress/storage for no reader.
 const UPLOADS = walk(staging)
-  .filter((file) => !file.endsWith('README.txt'))
+  .filter((file) => {
+    const key = relative(staging, file).split(sep).join('/')
+    return key === 'install.sh' || key === 'install.ps1' || key.startsWith('lite/')
+  })
   .map((file) => ({
     key: relative(staging, file).split(sep).join('/'),
     file,
@@ -56,7 +65,7 @@ function upload({ key, file, contentType }) {
 
   return new Promise((resolve, reject) => {
     const args = [
-      'wrangler', 'r2', 'object', 'put', objectPath,
+      'wrangler@4', 'r2', 'object', 'put', objectPath,
       '--content-type', contentType,
       '--remote',
     ]
