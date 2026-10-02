@@ -4,6 +4,12 @@ All notable changes to RetrySight Lite are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.1](https://github.com/arkaprava/retrysight-lite/releases/tag/v1.1.1) - 2026-10-02
+
+### Changed
+
+- Releases are now automated: pushing a `v*` tag builds all platforms, publishes to the download CDN, and creates a GitHub Release. No application changes from 1.1.0. See [#5](https://github.com/arkaprava/retrysight-lite/pull/5).
+
 ## [1.1.0](https://github.com/arkaprava/retrysight-lite/releases/tag/v1.1.0) - 2026-10-01
 
 ### Fixed
