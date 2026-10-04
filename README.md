@@ -2,7 +2,29 @@
 
 [License: Apache-2.0](LICENSE)
 
-Local-first console for coding-agent retries, tokens, cost estimates, and agentic metrics.
+Local-first console for coding-agent retries, tokens, cost estimates, and agentic metrics. Free, Apache-2.0, and everything stays on your machine.
+
+Coding agents retry more than you'd think: edit loops, failed tests, rejected diffs, context compaction. Vendor dashboards show total tokens, not how many were spent on retries. Lite reads the logs your agents already write and shows you.
+
+## Install
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://app.retrysight.com/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://app.retrysight.com/install.ps1 | iex
+```
+
+Or download the `.dmg`, `.tar.gz`, or `.zip` from [retrysight.com/lite](https://retrysight.com/go/lite?src=github-readme&cmp=count-retries). No Node.js or Docker needed.
+
+Open the app, then use Cursor, Claude Code, or Codex as usual. Sessions and retries appear as the collectors read the local logs. The local API (REST, GraphQL, and MCP) listens on `127.0.0.1:18081`, loopback only.
+
+## What's in it
 
 **Recommended UI:** native Flutter desktop app in `[app/](app/)` (macOS, Windows, Linux).
 
@@ -14,7 +36,7 @@ One Node.js backend process:
 
 No separate agent service. No Docker required.
 
-## Quick start
+## Build from source
 
 ### Flutter desktop (recommended)
 
@@ -60,7 +82,7 @@ npm run dev              # TUI + API + collectors
 
 
 
-## Install (platform binaries)
+## Packaging (maintainers)
 
 Build artifacts land in `release/`.
 
